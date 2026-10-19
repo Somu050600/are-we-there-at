@@ -18,9 +18,9 @@ Branch `feature/complete-alarms-and-functional-tests`. Last validated locally on
 | Command | Result |
 | --- | --- |
 | `flutter analyze` | no issues |
-| `flutter test` | 45 passed |
+| `flutter test` | 64 passed |
 | `flutter build apk --debug` | builds `app-debug.apk` |
-| `cd android && ./gradlew :app:testDebugUnitTest` | 47 passed |
+| `cd android && ./gradlew :app:testDebugUnitTest` | 59 passed |
 
 Only the app module is tested: plugin modules' own tests need a newer JDK.
 Robolectric runs an SDK 35 sandbox because SDK 36 sandboxes need Java 21.
@@ -46,6 +46,13 @@ the screen locked for every progress and arrival check.
 | Arrival with screen locked | screen wakes, full-screen "Arrived" page, insistent alarm |
 | Stop alarm | alarm cleared, page closed, service stopped |
 | Home | Last Trip card with Re-Start, "Last: 11m ago", hints, full-screen toggle; light and dark |
+| Tracking card and row | "Tracking Now", large distance, Pause pill and red Stop pill; round pause/✕ on the row |
+| Direction screen | opened from the card; 1 s GPS while open; arrow points at the destination; arrival clock and "3.0 km · 8 min" while moving |
+| Compass | flat phone facing north → arrow at ~233°; facing east → ~143° |
+
+Direction-screen defects found on the emulator and fixed: near-zero
+provider speeds hid the ETA; upright-phone azimuth was unstable; a silent
+compass gave no warning.
 
 Defects found on the emulator and fixed: Android 16 auto-grouping marked the
 arrival alarm silent (no sound, no full screen); balanced location priority
@@ -55,7 +62,8 @@ service after an update; the progress notification sat collapsed under
 
 ## Not verified
 
-Real GPS and arrival delays, Doze and battery saver, OEM background limits,
+Real GPS and arrival delays, compass accuracy and calibration on real
+phones, haptic strength on different vibration motors, Doze and battery saver, OEM background limits,
 a full reboot on the emulator (covered by Robolectric tests and the update
 path above), Android 13 and older notification layouts, the system denying
 full-screen intents, and battery use over a long trip. Emulator mock
