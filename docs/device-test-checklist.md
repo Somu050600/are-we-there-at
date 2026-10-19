@@ -1,35 +1,37 @@
 # Physical Android validation
 
-Automated tests cannot prove actual GPS delivery, Doze behavior, or OEM battery
-restrictions. Test on a phone with Google Play Services before using it on a trip.
-Record model, Android version, app commit, result and observed arrival delay.
+Automated and emulator tests cannot prove real GPS delivery, Doze behavior or
+OEM battery restrictions. Test on a phone with Google Play Services before
+relying on a trip. Record model, Android version, app commit, result and the
+distance at which the alarm rang.
 
-- Fresh install, normal launch, cold share and warm share. Configuration opens
-  once with selected destination, including encoded and shortened Maps links.
-- Deny precise permission; try approximate only; then grant precise and retry.
-- Deny background location; grant Allow all the time through settings and retry.
-- Deny notifications on Android 13+; enable system notifications and the Arrival
-  alarms channel, then retry. No failed Save should leave a phantom active alarm.
-- Turn system location off, cancel the resolution prompt, then retry and accept.
-- Share malformed input; share a short link offline; then share a valid location.
-- Cross into an enabled destination radius: named audible notification, vibration,
-  tap-to-open and dismiss button. Confirm both tap and dismiss stop the sound.
-- Repeat locked and after removing the app from Recents. Test overlapping alarms.
-- Disable, enter and verify silence; re-enable and test. Delete active alarm and
-  verify it does not alert or reappear.
-- Reboot, unlock once, wait for location acquisition, then cross the boundary.
-  Repeat after installing an update over the same app.
-- Revoke a permission with alarms enabled. Reopen, check warning, restore and retry.
-- Weak GPS, offline mode, battery saver and extended Doze. Record delays.
-- Force-stop in Android settings, then reopen to restore monitoring. Android blocks
-  background delivery for force-stopped apps until launched again.
-- Rapid Save taps, toggle then delete, Back during Save, landscape, keyboard open,
-  small screen and large text. Test 100 active alarms and attempted alarm 101.
+- Fresh install and update from an older build. Old geofence alarms must not
+  ring after the update.
+- Share from Google Maps: a place, a dropped pin and a shortened link (online
+  and offline). The sheet opens once per share with name and coordinates.
+- Start: deny precise location, allow approximate only, then allow precise.
+  Deny notifications on Android 13+, then allow. A refused Start keeps the
+  destination saved.
+- Turn system location off, Start, accept the prompt.
+- During a trip: progress notification updates while the screen is off; Pause
+  stops updates; Resume continues; Stop Tracking ends the trip.
+- Arrival with the phone locked and in a pocket: full-screen page (or heads-up
+  when full-screen alerts are not allowed), ringtone repeats until Stop,
+  vibration. Repeat with the full-screen toggle off.
+- Revoke "full-screen notifications" in Settings; the toggle card shows the
+  warning and opens Settings.
+- Start a second destination during a trip; the first trip ends.
+- Delete the destination of a running trip; tracking stops.
+- Reboot mid-trip: "Tap to resume" notice; tapping it resumes the trip.
+- Force-stop mid-trip, then open the app: the trip resumes.
+- Long trip (30+ min) with battery saver and Doze: note battery use and any
+  gaps in updates.
+- Small screen, large text, landscape, keyboard open in the sheet.
 
-Background geofence events may be delayed by minutes. A 50 m radius may be smaller
-than location accuracy. Choose a radius that provides enough travel buffer.
+The distance is straight-line, not along roads. A 50 m radius may be smaller
+than GPS accuracy; choose a radius that gives enough warning.
 
 References:
-- https://developer.android.com/develop/sensors-and-location/location/geofencing
-- https://developer.android.com/develop/sensors-and-location/location/permissions/background
+- https://developer.android.com/develop/sensors-and-location/location/request-updates
+- https://developer.android.com/develop/background-work/services/fgs/service-types#location
 - https://developer.android.com/develop/ui/views/notifications/notification-permission

@@ -1,3 +1,6 @@
+> Historical: superseded by the trip model in
+> [specs/2026-10-19-trip-ui-design.md](superpowers/specs/2026-10-19-trip-ui-design.md).
+
 # Complete Android location alarms
 
 Keep the existing Flutter/Kotlin architecture, application ID and SQLite schema.

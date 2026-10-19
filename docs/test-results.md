@@ -1,8 +1,8 @@
 # Validation status
 
-Branch `feature/complete-alarms-and-functional-tests`, based on
-`1fd684b3281ea039df70b21743098cd63ffc46d4`. Validated locally on 2026-10-19
-(macOS arm64) after reapplying the six handoff patches.
+Branch `feature/complete-alarms-and-functional-tests`. Last validated locally on
+2026-10-19 (macOS arm64) after the move from always-on geofences to trips
+(design: `docs/superpowers/specs/2026-10-19-trip-ui-design.md`).
 
 ## Toolchain
 
@@ -17,74 +17,47 @@ Branch `feature/complete-alarms-and-functional-tests`, based on
 
 | Command | Result |
 | --- | --- |
-| `flutter pub get` | resolves, lockfile unchanged |
 | `flutter analyze` | no issues |
-| `flutter test` | 44 passed |
+| `flutter test` | 45 passed |
 | `flutter build apk --debug` | builds `app-debug.apk` |
-| `cd android && ./gradlew :app:testDebugUnitTest` | 31 passed |
+| `cd android && ./gradlew :app:testDebugUnitTest` | 47 passed |
 
-The app module is tested on its own: running `testDebugUnitTest` at the root
-also runs plugin modules' tests, which need a newer JDK.
+Only the app module is tested: plugin modules' own tests need a newer JDK.
+Robolectric runs an SDK 35 sandbox because SDK 36 sandboxes need Java 21.
 
-## Defects found and fixed
+Widget tests inject a `TripController` without calling `init()` and set trip
+state directly: `init()`'s channel round trips stall FakeAsync. `init()` is
+covered by `test/services/trip_controller_test.dart` with real async.
 
-- Widget suite hung indefinitely. Fixtures created in `setUp` belong to the
-  real zone, so futures awaited inside FakeAsync never completed, and closing
-  drift from `tearDown` never returned. Fixtures are now built and closed inside
-  each test.
-- Recovery warning contract: `monitoringIssue` now holds the
-  `AlarmRecoveryException`, so the banner tells the user to retry. Tests compare
-  channel errors by code because channel encoding recreates `PlatformException`.
-- Empty alarm list overflowed by 279 px with the keyboard open and 1.5× text on
-  a 360×640 screen; it now scrolls.
-- `IntentParserTest` lacked a Robolectric runner. Robolectric is 4.16.1 with an
-  SDK 35 sandbox (`robolectric.properties`), because SDK 36 sandboxes need Java 21.
-- Activity destruction released the native queue while a Play services mutation
-  was in flight, allowing a later operation to overlap its store writes. The
-  queue is now held until the mutation callback runs. This is reviewed, not
-  covered by an automated test (FlutterActivity cannot run under Robolectric).
-- Notification actions used `id.hashCode()` as the PendingIntent identity, so
-  ids with colliding hash codes shared one dismiss action. Each alarm now has a
-  unique intent URI. Tapping the alert opens the app as the device checklist
-  expects; Dismiss and swipe stop it.
-- Recurring ENTER only fired once per registration on the emulator: Play
-  services filtered the unrequested EXIT and kept the geofence "inside", then
-  blocked re-entry ("already in state"). Geofences now request ENTER and EXIT;
-  the receiver still alerts only on ENTER.
-- Permission errors showed raw constants such as
-  `Permission not granted: android.permission.ACCESS_FINE_LOCATION`; they now
-  explain what to allow.
+## Emulator end-to-end (API 36 Google Play arm64 image, Android 16)
 
-Review lead 4 (Icon action builder needs API 23) is not a defect: minSdk is 24.
-
-## Emulator end-to-end (API 36 Google Play arm64 image)
-
-Location was driven with `adb emu geo fix` while Google Maps kept GPS active.
-The app was in the background for every arrival check.
+Location was driven with `adb emu geo fix`; the app was in the background or
+the screen locked for every progress and arrival check.
 
 | Scenario | Result |
 | --- | --- |
-| Normal launch | empty state, no permission prompts |
-| Warm share of a Maps URL | Configure opens with coordinates |
-| Encoded `geo:` share with label | name and coordinates shown |
-| Cold share after force-stop | Configure opens once |
-| Text without coordinates; untrusted host link | rejected with message |
-| Deny location; approximate only; return from settings without "all the time"; deny notifications | each shows an error, Save re-enabled, no row saved |
-| Grant precise, background and notifications | alarm saved and registered |
-| Enter radius | alert within 3–7 s; high importance, alarm sound, vibration |
-| Three exit/enter cycles | three alerts, each dismissed by its action |
-| Tap alert | app opens, alert cleared |
-| Disabled alarm; deleted alarm | no alert after 60 s inside |
-| Re-enable while inside | initial entry alert |
-| App update installed, app not opened | `MY_PACKAGE_REPLACED` restores monitoring |
-| Reboot, app not opened | `BOOT_COMPLETED` restores; alert 6 s after entry |
+| Update from the geofence build, app not opened | `MY_PACKAGE_REPLACED` removed legacy geofences and their store |
+| Shared Maps link | bottom sheet with coordinates, icon picker, radius, Start/Save/Cancel |
+| Start | trip saved, foreground service, "Travelling to X · Calculating…" |
+| Driving closer | 19.4 km → 5.5 km (71%) → 2.4 km (87%) → 1.2 km → 435 m (97%) |
+| Notification (Android 16) | progress bar with arrow tracker, Pause and Stop Tracking |
+| Pause / Resume from notification | GPS stops, "Paused · 4.0 km remaining", Resume tracks again |
+| App update mid-trip | "Tap to resume" notice; opening the app resumed at the stored progress |
+| Arrival with screen locked | screen wakes, full-screen "Arrived" page, insistent alarm |
+| Stop alarm | alarm cleared, page closed, service stopped |
+| Home | Last Trip card with Re-Start, "Last: 11m ago", hints, full-screen toggle; light and dark |
+
+Defects found on the emulator and fixed: Android 16 auto-grouping marked the
+arrival alarm silent (no sound, no full screen); balanced location priority
+stopped all fixes with network location off; a stored trip outlived its
+service after an update; the progress notification sat collapsed under
+"Silent".
 
 ## Not verified
 
-Physical GPS, real arrival delays, Doze and battery saver, OEM battery
-restrictions, offline short-link resolution, system location switched off,
-the notification channel disabled, landscape, and 100/101 active alarms.
-Emulator mock locations do not prove real GPS behavior. See
+Real GPS and arrival delays, Doze and battery saver, OEM background limits,
+a full reboot on the emulator (covered by Robolectric tests and the update
+path above), Android 13 and older notification layouts, the system denying
+full-screen intents, and battery use over a long trip. Emulator mock
+locations do not prove real GPS behavior. See
 [device-test-checklist.md](device-test-checklist.md).
-
-Remote push and PR: not done; commits are local only.
