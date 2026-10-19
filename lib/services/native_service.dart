@@ -1,4 +1,6 @@
 import 'package:flutter/services.dart';
+import '../models/destination.dart';
+import 'trip_state.dart';
 
 class SharedLocation {
   final double lat;
@@ -15,6 +17,7 @@ class SharedLocation {
 
 class NativeService {
   static const _channel = MethodChannel('are_we_there/native');
+  static const _trips = EventChannel('are_we_there/trip');
 
   static void onSharedLocation(Future<void> Function()? callback) {
     _channel.setMethodCallHandler(
@@ -98,4 +101,50 @@ class NativeService {
     'inactiveIds': inactiveIds,
   });
   static Future<void> openSettings() => _channel.invokeMethod('openSettings');
+
+  static Future<void> startTrip(Destination destination) {
+    validate(
+      id: destination.id,
+      lat: destination.latitude,
+      lng: destination.longitude,
+      radius: destination.radius,
+    );
+    return _channel.invokeMethod('startTrip', {
+      'id': destination.id,
+      'name': destination.label,
+      'lat': destination.latitude,
+      'lng': destination.longitude,
+      'radius': destination.radius,
+    });
+  }
+
+  static Future<void> pauseTrip() => _channel.invokeMethod('pauseTrip');
+  static Future<void> resumeTrip() => _channel.invokeMethod('resumeTrip');
+  static Future<void> stopTrip() => _channel.invokeMethod('stopTrip');
+
+  static Future<TripState> getTripState() async =>
+      TripState.fromMap(await _channel.invokeMethod<Object?>('getTripState'));
+
+  /// Live trip reports; emits the current state on listen.
+  static Stream<TripState> tripStates() =>
+      _trips.receiveBroadcastStream().map(TripState.fromMap);
+
+  /// Removes geofences left by versions before trips. Safe to repeat.
+  static Future<void> removeLegacyGeofences() =>
+      _channel.invokeMethod('removeLegacyGeofences');
+
+  static Future<AlarmSettings> getAlarmSettings() async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('getAlarmSettings'),
+      );
+
+  static Future<AlarmSettings> setFullScreenAlarm(bool enabled) async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('setFullScreenAlarm', {
+          'enabled': enabled,
+        }),
+      );
+
+  static Future<void> openFullScreenSettings() =>
+      _channel.invokeMethod('openFullScreenSettings');
 }

@@ -99,9 +99,6 @@ void main() {
   test('unknown stored icon names fall back to navigation', () async {
     await db.insertDestination(destination('a'));
     await db.customStatement("UPDATE alarms SET icon = 'rocket'");
-    expect(
-      (await db.getDestination('a'))!.icon,
-      DestinationIcon.navigation,
-    );
+    expect((await db.getDestination('a'))!.icon, DestinationIcon.navigation);
   });
 }

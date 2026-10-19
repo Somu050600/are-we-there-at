@@ -103,9 +103,7 @@ class AlarmDatabase extends _$AlarmDatabase {
 
   /// Updates the fields the edit sheet can change.
   Future<void> updateDestination(Destination destination) {
-    return (update(
-      alarms,
-    )..where((t) => t.id.equals(destination.id))).write(
+    return (update(alarms)..where((t) => t.id.equals(destination.id))).write(
       AlarmsCompanion(
         name: Value(destination.name),
         radius: Value(destination.radius),
@@ -122,7 +120,6 @@ class AlarmDatabase extends _$AlarmDatabase {
       AlarmsCompanion(lastUsedAt: Value(when)),
     );
   }
-
 
   /// Reactive stream of all alarms, newest first.
   Stream<List<model.Alarm>> watchAllAlarms() {

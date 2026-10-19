@@ -1,0 +1,38 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:are_we_there_yet/services/trip_state.dart';
+
+void main() {
+  test('parses every native state', () {
+    final tracking = TripState.fromMap({
+      'state': 'tracking',
+      'destinationId': 'a',
+      'name': 'Station',
+      'distanceMeters': 4230.5,
+      'progress': 0.63,
+    });
+    expect(tracking.status, TripStatus.tracking);
+    expect(tracking.destinationId, 'a');
+    expect(tracking.distanceMeters, 4230.5);
+    expect(tracking.progress, 0.63);
+    expect(tracking.isActive, isTrue);
+
+    expect(TripState.fromMap({'state': 'paused'}).isActive, isTrue);
+    expect(TripState.fromMap({'state': 'arrived'}).isActive, isFalse);
+    expect(TripState.fromMap({'state': 'idle'}).isActive, isFalse);
+  });
+
+  test('tolerates missing or malformed values', () {
+    final state = TripState.fromMap({'state': 'tracking', 'progress': 'x'});
+    expect(state.progress, isNull);
+    expect(state.distanceMeters, isNull);
+    expect(TripState.fromMap(null).status, TripStatus.idle);
+    expect(TripState.fromMap({'state': 'flying'}).status, TripStatus.idle);
+    expect(TripState.fromMap({'state': 'tracking', 'progress': 3}).progress, 1);
+  });
+
+  test('alarm settings default to enabled and allowed', () {
+    final settings = AlarmSettings.fromMap({'fullScreen': false});
+    expect(settings.enabled, isFalse);
+    expect(settings.allowed, isTrue);
+  });
+}
