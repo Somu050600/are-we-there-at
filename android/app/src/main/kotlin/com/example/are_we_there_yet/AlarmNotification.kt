@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 
 object AlarmNotification {
@@ -29,17 +30,27 @@ object AlarmNotification {
                 },
             )
         }
+        // PendingIntents match on Intent data, not extras: a per-alarm URI keeps
+        // alarms with colliding hash codes from sharing one action.
         val dismiss = PendingIntent.getBroadcast(
-            context, alarm.id.hashCode(),
-            Intent(context, NotificationDismissReceiver::class.java).putExtra(EXTRA_ALARM_ID, alarm.id),
+            context, 0,
+            Intent(context, NotificationDismissReceiver::class.java)
+                .setData(alarmUri(alarm.id)).putExtra(EXTRA_ALARM_ID, alarm.id),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val open = PendingIntent.getActivity(
+            context, 0,
+            Intent(context, MainActivity::class.java).setAction(Intent.ACTION_MAIN)
+                .setData(alarmUri(alarm.id))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val title = "Arrived at ${alarm.name?.takeIf { it.isNotBlank() } ?: "destination"}"
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(context, CHANNEL_ID) else Notification.Builder(context)
         val notification = builder.setSmallIcon(android.R.drawable.ic_dialog_map)
-            .setContentTitle(title).setContentText("Tap to dismiss this arrival alert")
+            .setContentTitle(title).setContentText("Tap to open the app, or dismiss to stop the alert")
             .setCategory(Notification.CATEGORY_ALARM).setPriority(Notification.PRIORITY_HIGH)
-            .setAutoCancel(true).setContentIntent(dismiss).setDeleteIntent(dismiss)
+            .setAutoCancel(true).setContentIntent(open).setDeleteIntent(dismiss)
             .addAction(Notification.Action.Builder(null, "Dismiss", dismiss).build())
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             .setVibrate(longArrayOf(0, 500, 250, 500)).build()
@@ -52,6 +63,9 @@ object AlarmNotification {
     }
 
     private fun notificationId(id: String) = id.hashCode() and Int.MAX_VALUE
+
+    private fun alarmUri(id: String) = Uri.Builder().scheme("are-we-there").authority("alarm")
+        .appendPath(id).build()
 }
 
 class NotificationDismissReceiver : BroadcastReceiver() {

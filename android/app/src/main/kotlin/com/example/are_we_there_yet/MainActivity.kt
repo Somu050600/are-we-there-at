@@ -51,7 +51,9 @@ class MainActivity : FlutterActivity() {
         destroyed = true
         activeOperation?.let { operation ->
             operation.result.error("ACTIVITY_DESTROYED", "The Android activity was closed", null)
-            operation.done()
+            // A mutation already handed to Play services keeps the queue until its
+            // callback runs, so a later operation cannot overlap its store writes.
+            if (!operation.executing) operation.done()
         }
         activeOperation = null
         synchronized(openResults) {

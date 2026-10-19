@@ -4,7 +4,11 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// IntentParser uses android.net.Uri, which needs Robolectric's implementation.
+@RunWith(RobolectricTestRunner::class)
 class IntentParserTest {
     @Test
     fun `encoded geo query supplies coordinates and label`() = runBlocking {

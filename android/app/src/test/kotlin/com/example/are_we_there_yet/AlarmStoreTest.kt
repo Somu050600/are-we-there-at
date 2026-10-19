@@ -26,7 +26,7 @@ class AlarmStoreTest {
         val expected = AlarmRecord("train", 51.5, -0.12, 250f, "Waterloo")
         store.saveActive(expected)
 
-        val reloaded = AlarmStore(ApplicationProvider.getApplicationContext()).snapshot()
+        val reloaded = AlarmStore(ApplicationProvider.getApplicationContext<android.content.Context>()).snapshot()
 
         assertEquals(listOf(expected), reloaded.active)
         assertTrue(reloaded.pendingRemovals.isEmpty())
@@ -37,7 +37,7 @@ class AlarmStoreTest {
         store.saveActive(AlarmRecord("old", 1.0, 2.0, 100f, "Old place"))
         store.beginRemoval("old")
 
-        val reloaded = AlarmStore(ApplicationProvider.getApplicationContext())
+        val reloaded = AlarmStore(ApplicationProvider.getApplicationContext<android.content.Context>())
 
         assertFalse(reloaded.isNotificationAllowed("old"))
         assertEquals(setOf("old"), reloaded.snapshot().pendingRemovals)

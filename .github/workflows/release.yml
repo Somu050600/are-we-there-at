@@ -42,7 +42,7 @@ jobs:
 
       - name: Android functional tests
         working-directory: android
-        run: ./gradlew testDebugUnitTest --no-daemon
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2

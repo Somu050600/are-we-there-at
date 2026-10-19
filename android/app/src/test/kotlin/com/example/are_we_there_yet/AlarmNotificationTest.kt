@@ -3,8 +3,10 @@ package com.example.are_we_there_yet
 import android.app.NotificationManager
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,5 +49,40 @@ class AlarmNotificationTest {
 
         val manager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as NotificationManager
         assertNull(shadowOf(manager).allNotifications.singleOrNull())
+    }
+
+    @Test
+    fun `alarms with colliding hash codes keep separate dismiss and open actions`() {
+        // "Aa" and "BB" share String.hashCode(), the old PendingIntent request code.
+        store.saveActive(AlarmRecord("Aa", 1.0, 2.0, 100f, "First"))
+        store.saveActive(AlarmRecord("BB", 3.0, 4.0, 100f, "Second"))
+
+        GeofenceEntryHandler(context, store).onEnter(listOf("Aa", "BB"))
+
+        val manager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notifications = shadowOf(manager).allNotifications
+        assertEquals(2, notifications.size)
+        val dismissed = notifications.map {
+            shadowOf(it.deleteIntent).savedIntent.getStringExtra(AlarmNotification.EXTRA_ALARM_ID)
+        }
+        assertEquals(setOf("Aa", "BB"), dismissed.toSet())
+        assertNotEquals(notifications[0].contentIntent, notifications[1].contentIntent)
+        assertTrue(shadowOf(notifications[0].contentIntent).isActivityIntent)
+    }
+
+    @Test
+    fun `dismiss action cancels only its own alarm notification`() {
+        store.saveActive(AlarmRecord("Aa", 1.0, 2.0, 100f, "First"))
+        store.saveActive(AlarmRecord("BB", 3.0, 4.0, 100f, "Second"))
+        GeofenceEntryHandler(context, store).onEnter(listOf("Aa", "BB"))
+        val manager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as NotificationManager
+        val first = shadowOf(manager).allNotifications.first {
+            it.extras.getString("android.title") == "Arrived at First"
+        }
+
+        NotificationDismissReceiver().onReceive(context, shadowOf(first.deleteIntent).savedIntent)
+
+        val remaining = shadowOf(manager).allNotifications.map { it.extras.getString("android.title") }
+        assertEquals(listOf("Arrived at Second"), remaining)
     }
 }
