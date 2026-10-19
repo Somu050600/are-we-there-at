@@ -27,6 +27,8 @@ import kotlinx.coroutines.launch
 class MainActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
     private lateinit var tripEvents: EventChannel
+    private lateinit var headingEvents: EventChannel
+    private var heading: HeadingSensor? = null
     private lateinit var store: TripStore
     private val inbox = SharedLocationInbox()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -39,6 +41,24 @@ class MainActivity : FlutterActivity() {
         store = TripStore(applicationContext)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel.setMethodCallHandler(::onMethodCall)
+        headingEvents = EventChannel(flutterEngine.dartExecutor.binaryMessenger, HEADING_CHANNEL)
+        headingEvents.setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    val sensor = HeadingSensor(this@MainActivity) { displayRotation() }
+                    if (!sensor.start { events.success(it) }) {
+                        events.error("NO_COMPASS", "This device has no compass", null)
+                        return
+                    }
+                    heading = sensor
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    heading?.stop()
+                    heading = null
+                }
+            },
+        )
         tripEvents = EventChannel(flutterEngine.dartExecutor.binaryMessenger, TRIP_CHANNEL)
         tripEvents.setStreamHandler(
             object : EventChannel.StreamHandler {
@@ -79,6 +99,9 @@ class MainActivity : FlutterActivity() {
         }
         scope.cancel()
         TripEvents.listener = null
+        heading?.stop()
+        heading = null
+        if (::headingEvents.isInitialized) headingEvents.setStreamHandler(null)
         if (::tripEvents.isInitialized) tripEvents.setStreamHandler(null)
         if (::channel.isInitialized) channel.setMethodCallHandler(null)
         super.onDestroy()
@@ -119,6 +142,15 @@ class MainActivity : FlutterActivity() {
                 result.success(alarmSettings())
             }
             "openFullScreenSettings" -> openFullScreenSettings(rawResult)
+            "setFastUpdates" -> parseOrError(rawResult) { result ->
+                val enabled = NativeArguments.enabled(call.arguments)
+                // Only a running trip changes cadence; never start the service for this.
+                if (TripService.isRunning) startService(TripService.fastIntent(this, enabled))
+                result.success(null)
+            }
+            "openInMaps" -> parseOrError(rawResult) { result ->
+                openInMaps(NativeArguments.place(call.arguments), result)
+            }
             "openSettings" -> openAppSettings(rawResult)
             else -> rawResult.notImplemented()
         }
@@ -172,6 +204,26 @@ class MainActivity : FlutterActivity() {
             result.error("SETTINGS_UNAVAILABLE", failure.message ?: "Could not open Android settings", null)
         }
     }
+
+    private fun openInMaps(place: Place, result: ChannelResult) {
+        val navigation = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${place.lat},${place.lng}"))
+        val label = Uri.encode(place.name)
+        val anyMap = Intent(Intent.ACTION_VIEW, Uri.parse("geo:${place.lat},${place.lng}?q=${place.lat},${place.lng}($label)"))
+        for (intent in listOf(navigation, anyMap)) {
+            try {
+                startActivity(intent)
+                result.success(null)
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try the next option.
+            }
+        }
+        result.error("NO_MAPS_APP", "No maps app is installed", null)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun displayRotation(): Int =
+        if (Build.VERSION.SDK_INT >= 30) display?.rotation ?: 0 else windowManager.defaultDisplay.rotation
 
     private fun hasFineLocationPermission() =
         ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
@@ -433,6 +485,7 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val CHANNEL = "are_we_there/native"
         private const val TRIP_CHANNEL = "are_we_there/trip"
+        private const val HEADING_CHANNEL = "are_we_there/heading"
         private const val RC_FINE_LOCATION = 1001
         private const val RC_NOTIFICATIONS = 1003
         private const val RC_NOTIFICATION_SETTINGS = 1005

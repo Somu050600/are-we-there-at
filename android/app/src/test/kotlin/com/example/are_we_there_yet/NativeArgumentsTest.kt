@@ -44,4 +44,13 @@ class NativeArgumentsTest {
         assertEquals(true, NativeArguments.enabled(mapOf("enabled" to true)))
         assertThrows(InvalidArgumentsException::class.java) { NativeArguments.enabled(mapOf("enabled" to "yes")) }
     }
+
+    @Test
+    fun `a place needs valid coordinates and a name`() {
+        val place = NativeArguments.place(mapOf("lat" to 12.9, "lng" to 77.5, "name" to "Station"))
+        assertEquals(Place(12.9, 77.5, "Station"), place)
+        assertThrows(InvalidArgumentsException::class.java) {
+            NativeArguments.place(mapOf("lat" to 91, "lng" to 77.5, "name" to "x"))
+        }
+    }
 }

@@ -27,17 +27,22 @@ class TripServiceTest {
     private val trip = Trip("a", "Station", 12.9784, 77.5710, 200.0, startDistance = null, paused = false)
 
     private class FakeLocationSource : LocationSource {
-        var listener: ((Double, Double) -> Unit)? = null
+        var listener: ((Fix) -> Unit)? = null
         var interval: Long? = null
-        override fun start(intervalMillis: Long, onLocation: (Double, Double) -> Unit) {
+        private var time = 0L
+        override fun start(intervalMillis: Long, onFix: (Fix) -> Unit) {
             interval = intervalMillis
-            listener = onLocation
+            listener = onFix
         }
         override fun stop() {
             listener = null
             interval = null
         }
-        fun at(lat: Double, lng: Double) = listener!!.invoke(lat, lng)
+        /** Fixes arrive 10 s apart. */
+        fun at(lat: Double, lng: Double, speed: Double? = null) {
+            time += 10_000
+            listener!!.invoke(Fix(lat, lng, speed, time))
+        }
     }
 
     @Before
@@ -169,6 +174,51 @@ class TripServiceTest {
         val controller = Robolectric.buildService(TripService::class.java).create()
         command(controller, null)
         assertTrue(shadowOf(controller.get()).isStoppedBySelf)
+        assertNull(source.listener)
+    }
+
+    @Test
+    fun `moving fixes report bearing, speed and eta`() {
+        started()
+        source.at(12.9955, 77.5710) // ~1.9 km north
+        assertNull(events.last().eta)
+        source.at(12.9910, 77.5710) // ~500 m closer, 10 s later
+        val moving = events.last()
+        assertEquals(180.0, moving.bearing!!, 1.0)
+        assertEquals(50.0, moving.speed!!, 2.0)
+        assertTrue(moving.eta!! in 20.0..35.0)
+        assertEquals(12.9910, moving.fix!!.lat, 1e-9)
+        val map = moving.toMap()
+        assertEquals(moving.eta, map["etaSeconds"])
+        assertEquals(moving.bearing, map["bearingDegrees"])
+    }
+
+    @Test
+    fun `reported fix speed is preferred over derived speed`() {
+        started()
+        source.at(12.9955, 77.5710, speed = 12.0)
+        assertEquals(12.0, events.last().speed!!, 1e-9)
+    }
+
+    @Test
+    fun `fast updates while the direction screen is open`() {
+        val controller = started()
+        source.at(13.10, 77.5710) // far: normally 30 s
+        assertEquals(30_000L, source.interval)
+        command(controller, TripService.fastIntent(context, true))
+        assertEquals(1_000L, source.interval)
+        source.at(13.09, 77.5710)
+        assertEquals(1_000L, source.interval)
+        command(controller, TripService.fastIntent(context, false))
+        assertEquals(30_000L, source.interval)
+    }
+
+    @Test
+    fun `fast updates do not wake a paused trip`() {
+        val controller = started()
+        far()
+        command(controller, TripService.actionIntent(context, TripService.ACTION_PAUSE))
+        command(controller, TripService.fastIntent(context, true))
         assertNull(source.listener)
     }
 

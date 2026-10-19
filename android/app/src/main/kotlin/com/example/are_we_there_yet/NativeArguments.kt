@@ -1,6 +1,7 @@
 package com.example.are_we_there_yet
 
 class InvalidArgumentsException(message: String) : IllegalArgumentException(message)
+data class Place(val lat: Double, val lng: Double, val name: String)
 
 object NativeArguments {
     const val MIN_RADIUS = 50.0
@@ -21,6 +22,14 @@ object NativeArguments {
             throw InvalidArgumentsException("Coordinates or radius are outside the supported range")
         }
         return Trip(id, name, lat, lng, radius, startDistance = null, paused = false)
+    }
+
+    fun place(arguments: Any?): Place {
+        val trip = trip(
+            (arguments as? Map<*, *> ?: throw InvalidArgumentsException("Expected a place")) +
+                mapOf("id" to "place", "radius" to MIN_RADIUS),
+        )
+        return Place(trip.lat, trip.lng, trip.name)
     }
 
     fun enabled(arguments: Any?): Boolean = (arguments as? Map<*, *>)?.get("enabled") as? Boolean

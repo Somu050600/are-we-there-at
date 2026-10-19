@@ -21,6 +21,11 @@ data class TripSnapshot(
     val trip: Trip? = null,
     val distance: Double? = null,
     val progress: Double? = null,
+    val fix: Fix? = null,
+    val speed: Double? = null,
+    /** From the last fix to the destination, clockwise from north. */
+    val bearing: Double? = null,
+    val eta: Double? = null,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "state" to status.name.lowercase(),
@@ -28,6 +33,11 @@ data class TripSnapshot(
         "name" to trip?.name,
         "distanceMeters" to distance,
         "progress" to progress,
+        "lat" to fix?.lat,
+        "lng" to fix?.lng,
+        "speedMps" to speed,
+        "bearingDegrees" to bearing,
+        "etaSeconds" to eta,
     )
 
     companion object {

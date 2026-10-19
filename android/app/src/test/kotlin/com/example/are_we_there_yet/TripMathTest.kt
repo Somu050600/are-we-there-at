@@ -2,6 +2,7 @@ package com.example.are_we_there_yet
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -44,5 +45,26 @@ class TripMathTest {
         assertEquals(63, TripMath.percent(0.634))
         assertEquals(99, TripMath.percent(0.999))
         assertEquals(0, TripMath.percent(null))
+    }
+
+    @Test
+    fun `bearing is measured clockwise from north`() {
+        assertEquals(0.0, TripMath.bearingDegrees(12.0, 77.0, 13.0, 77.0), 0.5)
+        assertEquals(90.0, TripMath.bearingDegrees(0.0, 77.0, 0.0, 78.0), 0.5)
+        assertEquals(180.0, TripMath.bearingDegrees(13.0, 77.0, 12.0, 77.0), 0.5)
+        assertEquals(270.0, TripMath.bearingDegrees(0.0, 78.0, 0.0, 77.0), 0.5)
+    }
+
+    @Test
+    fun `speed is smoothed toward new samples`() {
+        assertEquals(10.0, TripMath.smoothSpeed(null, 10.0), 1e-9)
+        assertEquals(13.0, TripMath.smoothSpeed(10.0, 20.0), 1e-9)
+    }
+
+    @Test
+    fun `eta needs at least walking pace`() {
+        assertEquals(100.0, TripMath.etaSeconds(1_000.0, 10.0)!!, 1e-9)
+        assertNull(TripMath.etaSeconds(1_000.0, 0.5))
+        assertNull(TripMath.etaSeconds(1_000.0, null))
     }
 }
