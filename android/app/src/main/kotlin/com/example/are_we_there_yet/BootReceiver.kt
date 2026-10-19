@@ -1,25 +1,24 @@
 package com.example.are_we_there_yet
 
+import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.util.Log
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
-        val pending = goAsync()
-        NativeOperationQueue.shared.submit(
-            onCancelled = { pending.finish() },
-            onFailure = { failure ->
-                Log.e("BootReceiver", "Could not start geofence restoration", failure)
-                pending.finish()
-            },
-        ) { done ->
-            GeofenceReconciler(AlarmStore(context), GeofenceManager(context)).restore { result ->
-                result.exceptionOrNull()?.let { Log.e("BootReceiver", "Could not restore geofences", it) }
-                done()
-                pending.finish()
+        when (intent.action) {
+            // Android does not allow starting location tracking from boot, so ask the user.
+            Intent.ACTION_BOOT_COMPLETED -> {
+                val store = TripStore(context)
+                val trip = store.active() ?: return
+                store.clearActive()
+                context.getSystemService(NotificationManager::class.java)
+                    .notify(TripNotifications.RESTART_ID, TripNotifications.restartNotice(context, trip))
+            }
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                val pending = goAsync()
+                LegacyGeofences.remove(context) { pending.finish() }
             }
         }
     }

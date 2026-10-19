@@ -4,13 +4,17 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CancellationException
@@ -22,8 +26,8 @@ import kotlinx.coroutines.launch
 
 class MainActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
-    private lateinit var geofenceManager: GeofenceManager
-    private lateinit var reconciler: GeofenceReconciler
+    private lateinit var tripEvents: EventChannel
+    private lateinit var store: TripStore
     private val inbox = SharedLocationInbox()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val openResults = mutableSetOf<ChannelResult>()
@@ -32,10 +36,22 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        geofenceManager = GeofenceManager(applicationContext)
-        reconciler = GeofenceReconciler(AlarmStore(applicationContext), geofenceManager)
+        store = TripStore(applicationContext)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel.setMethodCallHandler(::onMethodCall)
+        tripEvents = EventChannel(flutterEngine.dartExecutor.binaryMessenger, TRIP_CHANNEL)
+        tripEvents.setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+                    TripEvents.listener = { snapshot -> runOnUiThread { events.success(snapshot.toMap()) } }
+                    events.success(currentTrip().toMap())
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    TripEvents.listener = null
+                }
+            },
+        )
         SharedLocationInbox.fromIntent(intent)?.let(inbox::add)
     }
 
@@ -62,6 +78,8 @@ class MainActivity : FlutterActivity() {
             }
         }
         scope.cancel()
+        TripEvents.listener = null
+        if (::tripEvents.isInitialized) tripEvents.setStreamHandler(null)
         if (::channel.isInitialized) channel.setMethodCallHandler(null)
         super.onDestroy()
     }
@@ -69,26 +87,86 @@ class MainActivity : FlutterActivity() {
     private fun onMethodCall(call: MethodCall, rawResult: MethodChannel.Result) {
         when (call.method) {
             "getSharedLocation" -> getSharedLocation(rawResult)
-            "addGeofence" -> parseOrError(rawResult) { result ->
-                val alarm = NativeArguments.alarm(call.arguments)
-                enqueueMutation(result, requiresRegistration = true, successValue = "Geofence registered: ${alarm.id}") {
-                    reconciler.add(alarm, it)
+            "startTrip" -> parseOrError(rawResult) { result ->
+                val trip = NativeArguments.trip(call.arguments)
+                enqueueMutation(result, requiresLocation = true) { done ->
+                    ContextCompat.startForegroundService(this, TripService.startIntent(this, trip))
+                    done(Result.success(Unit))
                 }
             }
-            "removeGeofence" -> parseOrError(rawResult) { result ->
-                val id = NativeArguments.id(call.arguments)
-                enqueueMutation(result, requiresRegistration = false) { reconciler.remove(id, it) }
-            }
-            "syncGeofences" -> parseOrError(rawResult) { result ->
-                val arguments = NativeArguments.sync(call.arguments)
-                enqueueMutation(result, requiresRegistration = arguments.alarms.isNotEmpty()) {
-                    reconciler.sync(arguments, it)
+            "pauseTrip" -> tripAction(rawResult, TripService.ACTION_PAUSE)
+            "resumeTrip" -> parseOrError(rawResult) { result ->
+                enqueueMutation(result, requiresLocation = true) { done ->
+                    ContextCompat.startForegroundService(this, TripService.actionIntent(this, TripService.ACTION_RESUME))
+                    done(Result.success(Unit))
                 }
             }
+            "stopTrip" -> tripAction(rawResult, TripService.ACTION_STOP)
+            "getTripState" -> track(rawResult).success(currentTrip().toMap())
+            "removeLegacyGeofences" -> {
+                val result = track(rawResult)
+                LegacyGeofences.remove(applicationContext) { outcome ->
+                    runOnUiThread {
+                        outcome.exceptionOrNull()?.let {
+                            result.error("CLEANUP_FAILED", it.message ?: "Could not remove old alarms", null)
+                        } ?: result.success(null)
+                    }
+                }
+            }
+            "getAlarmSettings" -> track(rawResult).success(alarmSettings())
+            "setFullScreenAlarm" -> parseOrError(rawResult) { result ->
+                store.fullScreenEnabled = NativeArguments.enabled(call.arguments)
+                result.success(alarmSettings())
+            }
+            "openFullScreenSettings" -> openFullScreenSettings(rawResult)
             "openSettings" -> openAppSettings(rawResult)
             else -> rawResult.notImplemented()
         }
     }
+
+    /** Pause and stop only touch an already running trip, so they need no permission checks. */
+    private fun tripAction(rawResult: MethodChannel.Result, action: String) = parseOrError(rawResult) { result ->
+        if (store.active() == null) {
+            TripEvents.publish(TripSnapshot.IDLE)
+        } else {
+            startService(TripService.actionIntent(this, action))
+        }
+        result.success(null)
+    }
+
+    /** The service's last report, or the stored trip if the app restarted. */
+    private fun currentTrip(): TripSnapshot {
+        val last = TripEvents.last
+        if (last.status != TripStatus.IDLE) return last
+        val stored = store.active() ?: return TripSnapshot.IDLE
+        return TripSnapshot(if (stored.paused) TripStatus.PAUSED else TripStatus.TRACKING, stored)
+    }
+
+    private fun alarmSettings() = mapOf(
+        "fullScreen" to store.fullScreenEnabled,
+        "fullScreenAllowed" to TripNotifications.canUseFullScreen(this),
+    )
+
+    private fun openFullScreenSettings(rawResult: MethodChannel.Result) {
+        val result = track(rawResult)
+        val intent = if (Build.VERSION.SDK_INT >= 34) {
+            Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.fromParts("package", packageName, null))
+        } else {
+            appDetailsIntent()
+        }
+        try {
+            startActivity(intent)
+            result.success(null)
+        } catch (failure: Throwable) {
+            result.error("SETTINGS_UNAVAILABLE", failure.message ?: "Could not open Android settings", null)
+        }
+    }
+
+    private fun hasFineLocationPermission() =
+        ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+    private fun isLocationEnabled() =
+        LocationManagerCompat.isLocationEnabled(getSystemService(LocationManager::class.java))
 
     private fun parseOrError(rawResult: MethodChannel.Result, block: (ChannelResult) -> Unit) {
         val result = track(rawResult)
@@ -133,7 +211,7 @@ class MainActivity : FlutterActivity() {
 
     private fun enqueueMutation(
         result: ChannelResult,
-        requiresRegistration: Boolean,
+        requiresLocation: Boolean,
         successValue: Any? = null,
         mutation: ((Result<Unit>) -> Unit) -> Unit,
     ) {
@@ -151,29 +229,18 @@ class MainActivity : FlutterActivity() {
             }
             val operation = ActiveOperation(result, done, successValue, mutation)
             activeOperation = operation
-            if (requiresRegistration) continuePrerequisites(operation) else execute(operation)
+            if (requiresLocation) continuePrerequisites(operation) else execute(operation)
         }
     }
 
     private fun continuePrerequisites(operation: ActiveOperation) {
         if (destroyed || activeOperation !== operation) return
-        if (!geofenceManager.hasFineLocationPermission()) {
+        if (!hasFineLocationPermission()) {
             requestPermissions(
                 operation,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
                 RC_FINE_LOCATION,
             )
-            return
-        }
-        if (!geofenceManager.hasBackgroundLocationPermission()) {
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
-                requestPermissions(operation, arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION), RC_BACKGROUND_LOCATION)
-            } else if (!operation.backgroundSettingsOpened) {
-                operation.backgroundSettingsOpened = true
-                launchSettings(operation, appDetailsIntent(), RC_BACKGROUND_SETTINGS)
-            } else {
-                permissionError(operation, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-            }
             return
         }
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -196,7 +263,7 @@ class MainActivity : FlutterActivity() {
             }
             return
         }
-        if (!geofenceManager.isLocationEnabled()) {
+        if (!isLocationEnabled()) {
             if (!operation.locationSettingsOpened) {
                 operation.locationSettingsOpened = true
                 launchSettings(operation, Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS), RC_LOCATION_SETTINGS)
@@ -234,15 +301,8 @@ class MainActivity : FlutterActivity() {
         val operation = activeOperation ?: return
         when (requestCode) {
             RC_FINE_LOCATION -> {
-                if (!geofenceManager.hasFineLocationPermission()) {
+                if (!hasFineLocationPermission()) {
                     permissionError(operation, Manifest.permission.ACCESS_FINE_LOCATION)
-                } else {
-                    continuePrerequisites(operation)
-                }
-            }
-            RC_BACKGROUND_LOCATION -> {
-                if (!geofenceManager.hasBackgroundLocationPermission()) {
-                    permissionError(operation, Manifest.permission.ACCESS_BACKGROUND_LOCATION)
                 } else {
                     continuePrerequisites(operation)
                 }
@@ -298,9 +358,7 @@ class MainActivity : FlutterActivity() {
         val code = if (canAskAgain) "PERMISSION_DENIED" else "PERMISSION_PERMANENTLY_DENIED"
         // Shown to the user as-is by the configuration screen.
         val needed = when (permission) {
-            Manifest.permission.ACCESS_FINE_LOCATION -> "Allow precise location to set an arrival alarm."
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION ->
-                "Set location access to \"Allow all the time\" so alarms work while the app is closed."
+            Manifest.permission.ACCESS_FINE_LOCATION -> "Allow precise location to track your trip."
             Manifest.permission.POST_NOTIFICATIONS -> "Allow notifications so the arrival alarm can alert you."
             else -> "A required permission was not granted."
         }
@@ -356,7 +414,6 @@ class MainActivity : FlutterActivity() {
         val done: () -> Unit,
         val successValue: Any?,
         val mutation: ((Result<Unit>) -> Unit) -> Unit,
-        var backgroundSettingsOpened: Boolean = false,
         var notificationSettingsOpened: Boolean = false,
         var locationSettingsOpened: Boolean = false,
         var executing: Boolean = false,
@@ -364,14 +421,12 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CHANNEL = "are_we_there/native"
+        private const val TRIP_CHANNEL = "are_we_there/trip"
         private const val RC_FINE_LOCATION = 1001
-        private const val RC_BACKGROUND_LOCATION = 1002
         private const val RC_NOTIFICATIONS = 1003
-        private const val RC_BACKGROUND_SETTINGS = 1004
         private const val RC_NOTIFICATION_SETTINGS = 1005
         private const val RC_LOCATION_SETTINGS = 1006
         private val SETTINGS_REQUEST_CODES = setOf(
-            RC_BACKGROUND_SETTINGS,
             RC_NOTIFICATION_SETTINGS,
             RC_LOCATION_SETTINGS,
         )
