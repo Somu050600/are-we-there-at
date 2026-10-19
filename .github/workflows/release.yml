@@ -1,5 +1,7 @@
 name: Release
 
+# Publishing a GitHub release (tag vX.Y.Z or vX.Y.Z-rc.N) builds a signed APK
+# and attaches it to that release.
 on:
   release:
     types: [published]
@@ -7,12 +9,46 @@ on:
 permissions:
   contents: write
 
+env:
+  # SHA-256 of the release signing certificate. Updates only install over an
+  # APK signed with this same key, so a build signed with anything else fails.
+  RELEASE_CERT_SHA256: dc9225131afc0272579ed5189db48ba3215b78d73e60374e0c45405e90d20437
+
 jobs:
   build-and-attach:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+
+      - name: Version from tag
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::Release tag '$tag' must look like v1.2.3 or v1.2.3-rc.1"
+            exit 1
+          fi
+          # Android needs an ever-increasing version code; earlier builds used 1.
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          echo "APP_BUILD_NUMBER=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_ENV"
+
+      - name: Prepare signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret $name is not set"
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/release.jks"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "ANDROID_KEYSTORE_PATH=$keystore" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -37,8 +73,23 @@ jobs:
       - run: flutter analyze
       - run: flutter test
 
-      - name: Build release APK
-        run: flutter build apk --release
+      - name: Build signed release APK
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: flutter build apk --release --build-name "$APP_VERSION" --build-number "$APP_BUILD_NUMBER"
+
+      - name: Verify signing key
+        run: |
+          apk=build/app/outputs/flutter-apk/app-release.apk
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          digest="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          if [ "$digest" != "$RELEASE_CERT_SHA256" ]; then
+            echo "::error::APK is signed with $digest, expected the release key $RELEASE_CERT_SHA256"
+            exit 1
+          fi
+          cp "$apk" "build/are-we-there-yet-$APP_VERSION.apk"
 
       - name: Android functional tests
         working-directory: android
@@ -47,6 +98,10 @@ jobs:
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2
         with:
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: build/are-we-there-yet-${{ env.APP_VERSION }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks"

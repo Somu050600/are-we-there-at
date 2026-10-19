@@ -52,8 +52,25 @@ On Linux, SQLite tests require `libsqlite3-dev`. The generated Drift file is
 checked in; after changing the database definition, regenerate it with
 `dart run build_runner build --delete-conflicting-outputs`.
 
+## Releases
+
+Publish a GitHub release with a tag such as `v0.2.0` (or `v0.2.0-rc.1` as a
+pre-release):
+
+```bash
+gh release create v0.2.0 --target main --generate-notes
+```
+
+The Release workflow tests the code, builds an APK named after the tag, signs
+it with the release key from the repository secrets (`ANDROID_KEYSTORE_BASE64`,
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`), checks
+the signing certificate and attaches the APK to the release. Keep a backup of
+the keystore and its password: updates only install over APKs signed with the
+same key. Local `flutter build apk --release` uses the debug key unless
+`ANDROID_KEYSTORE_PATH` and the same variables are set.
+
 GitHub Actions runs analysis, functional tests and the debug APK build. Unit and
 widget tests exercise failure recovery as well as normal flows. Android unit tests
 use a simulated Android environment; actual GPS, permission dialogs, Doze and OEM
 battery behavior still require the physical device checklist. The debug APK is a
-development build. Store distribution needs a production signing configuration.
+development build.
