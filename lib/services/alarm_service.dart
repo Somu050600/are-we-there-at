@@ -40,6 +40,14 @@ class AlarmService {
 
   void _replaceIssue(Object error) => monitoringIssue.value = error;
 
+  /// The persistent warning holds the combined failure so the banner tells
+  /// the user to retry, rather than showing only the raw native error.
+  AlarmRecoveryException _recoveryFailed(Object original, Object recovery) {
+    final failure = AlarmRecoveryException(original, recovery);
+    _recordIssue(failure);
+    return failure;
+  }
+
   Future<void> create(Alarm alarm) => _run(() async {
     NativeService.validate(
       id: alarm.id,
@@ -59,8 +67,7 @@ class AlarmService {
         try {
           await NativeService.removeGeofence(alarm.id);
         } catch (recovery) {
-          _recordIssue(recovery);
-          throw AlarmRecoveryException(original, recovery);
+          throw _recoveryFailed(original, recovery);
         }
       }
       await database.deleteAlarm(alarm.id);
@@ -91,8 +98,7 @@ class AlarmService {
           await NativeService.removeGeofence(current.id);
         }
       } catch (recovery) {
-        _recordIssue(recovery);
-        throw AlarmRecoveryException(original, recovery);
+        throw _recoveryFailed(original, recovery);
       }
       rethrow;
     }
@@ -113,8 +119,7 @@ class AlarmService {
       try {
         if (current.isActive) await _register(current);
       } catch (recovery) {
-        _recordIssue(recovery);
-        throw AlarmRecoveryException(original, recovery);
+        throw _recoveryFailed(original, recovery);
       }
       rethrow;
     }

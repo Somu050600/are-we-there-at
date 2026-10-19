@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:drift/drift.dart' show DatabaseConnection;
 import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,8 +21,17 @@ void main() {
   Object? saveError;
   Object? removeError;
   Completer<void>? saveGate;
-  setUp(() {
-    db = AlarmDatabase(NativeDatabase.memory());
+  // Build fixtures inside each test's FakeAsync zone. Futures created in
+  // setUp belong to the real zone, so pumping would never complete them.
+  void init() {
+    // Widget tests run in FakeAsync; drift's delayed stream cleanup would
+    // otherwise keep close() waiting on a timer that never fires.
+    db = AlarmDatabase(
+      DatabaseConnection(
+        NativeDatabase.memory(),
+        closeStreamsSynchronously: true,
+      ),
+    );
     service = AlarmService(db);
     calls = [];
     shares = [];
@@ -40,15 +50,19 @@ void main() {
         if (saveGate != null) await saveGate!.future;
         if (saveError != null) throw saveError!;
       }
-      if (call.method == 'removeGeofence' && removeError != null)
+      if (call.method == 'removeGeofence' && removeError != null) {
         throw removeError!;
+      }
       return null;
     });
-  });
-  tearDown(() async {
-    messenger.setMockMethodCallHandler(channel, null);
-    await db.close();
-  });
+  }
+
+  void appTest(String description, WidgetTesterCallback body) =>
+      testWidgets(description, (tester) async {
+        init();
+        await body(tester);
+      });
+  tearDown(() => messenger.setMockMethodCallHandler(channel, null));
   Future<void> mount(WidgetTester tester) async {
     await tester.pumpWidget(MyApp(service: service));
     await tester.pumpAndSettle();
@@ -57,6 +71,9 @@ void main() {
   Future<void> finish(WidgetTester tester) async {
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 4));
+    // The database was first opened inside this test's FakeAsync zone, so it
+    // must be closed here; closing it from tearDown never completes.
+    await db.close();
   }
 
   Future<void> warmShare(WidgetTester tester) async {
@@ -93,7 +110,7 @@ void main() {
     ),
   );
 
-  testWidgets(
+  appTest(
     'normal launch shows the real empty state without permission requests',
     (tester) async {
       await mount(tester);
@@ -102,7 +119,7 @@ void main() {
       await finish(tester);
     },
   );
-  testWidgets('cold share saves once and returns home', (tester) async {
+  appTest('cold share saves once and returns home', (tester) async {
     share();
     await mount(tester);
     expect(find.text('Configure Alarm'), findsOneWidget);
@@ -112,7 +129,7 @@ void main() {
     expect(calls.where((c) => c.method == 'addGeofence').length, 1);
     await finish(tester);
   });
-  testWidgets('canceling a cold share returns to the list', (tester) async {
+  appTest('canceling a cold share returns to the list', (tester) async {
     share();
     await mount(tester);
     await tester.ensureVisible(find.text('Cancel'));
@@ -122,14 +139,14 @@ void main() {
     expect(await db.getAllAlarms(), isEmpty);
     await finish(tester);
   });
-  testWidgets('warm share opens configuration without restart', (tester) async {
+  appTest('warm share opens configuration without restart', (tester) async {
     await mount(tester);
     share();
     await warmShare(tester);
     expect(find.text('Configure Alarm'), findsOneWidget);
     await finish(tester);
   });
-  testWidgets('queued share waits until the current configuration closes', (
+  appTest('queued share waits until the current configuration closes', (
     tester,
   ) async {
     share();
@@ -144,7 +161,7 @@ void main() {
     expect(find.text('Office'), findsWidgets);
     await finish(tester);
   });
-  testWidgets('invalid share does not block the next valid destination', (
+  appTest('invalid share does not block the next valid destination', (
     tester,
   ) async {
     shares.add(
@@ -159,7 +176,7 @@ void main() {
     expect(find.text('Station'), findsWidgets);
     await finish(tester);
   });
-  testWidgets('more than ten invalid shares do not strand a valid share', (
+  appTest('more than ten invalid shares do not strand a valid share', (
     tester,
   ) async {
     for (var index = 0; index < 12; index++) {
@@ -182,9 +199,7 @@ void main() {
     );
     await finish(tester);
   });
-  testWidgets('a share transport error stops draining the queue', (
-    tester,
-  ) async {
+  appTest('a share transport error stops draining the queue', (tester) async {
     shares.add(
       PlatformException(
         code: 'CHANNEL_FAILED',
@@ -200,9 +215,7 @@ void main() {
     expect(calls.where((call) => call.method == 'getSharedLocation').length, 1);
     await finish(tester);
   });
-  testWidgets('permission denial shows error and permits retry', (
-    tester,
-  ) async {
+  appTest('permission denial shows error and permits retry', (tester) async {
     share();
     saveError = PlatformException(
       code: 'PERMISSION_DENIED',
@@ -218,7 +231,7 @@ void main() {
     expect((await db.getAllAlarms()).single.isActive, isTrue);
     await finish(tester);
   });
-  testWidgets('small screen with keyboard and large text has no overflow', (
+  appTest('small screen with keyboard and large text has no overflow', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(360, 640);
@@ -238,9 +251,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await finish(tester);
   });
-  testWidgets('toggle updates native monitoring and persistence', (
-    tester,
-  ) async {
+  appTest('toggle updates native monitoring and persistence', (tester) async {
     await seed();
     await mount(tester);
     calls.clear();
@@ -250,7 +261,7 @@ void main() {
     expect(calls.single.method, 'removeGeofence');
     await finish(tester);
   });
-  testWidgets('failed toggle leaves the switch enabled and shows an error', (
+  appTest('failed toggle leaves the switch enabled and shows an error', (
     tester,
   ) async {
     await seed();
@@ -265,7 +276,7 @@ void main() {
     expect(find.text('Could not stop monitoring'), findsOneWidget);
     await finish(tester);
   });
-  testWidgets('retry clears the monitoring warning after a failed removal', (
+  appTest('retry clears the monitoring warning after a failed removal', (
     tester,
   ) async {
     await seed();
@@ -287,9 +298,7 @@ void main() {
     expect(calls.where((call) => call.method == 'syncGeofences').length, 1);
     await finish(tester);
   });
-  testWidgets('resume retries monitoring and clears the warning', (
-    tester,
-  ) async {
+  appTest('resume retries monitoring and clears the warning', (tester) async {
     await seed();
     await mount(tester);
     removeError = PlatformException(
@@ -311,7 +320,7 @@ void main() {
     expect(calls.where((call) => call.method == 'syncGeofences').length, 1);
     await finish(tester);
   });
-  testWidgets('swipe delete removes the record without a dismissal exception', (
+  appTest('swipe delete removes the record without a dismissal exception', (
     tester,
   ) async {
     await seed();
@@ -323,7 +332,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await finish(tester);
   });
-  testWidgets('failed delete leaves the card visible and retryable', (
+  appTest('failed delete leaves the card visible and retryable', (
     tester,
   ) async {
     await seed();
@@ -338,7 +347,7 @@ void main() {
     expect((await db.getAllAlarms()).single.id, 'one');
     await finish(tester);
   });
-  testWidgets('save is disabled while Android permission request is pending', (
+  appTest('save is disabled while Android permission request is pending', (
     tester,
   ) async {
     share();
@@ -349,7 +358,11 @@ void main() {
     await tester.pump();
     expect(find.text('Saving...'), findsOneWidget);
     expect(
-      tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+      tester
+          .widget<FilledButton>(
+            find.byWidgetPredicate((widget) => widget is FilledButton),
+          )
+          .onPressed,
       isNull,
     );
     saveGate!.complete();

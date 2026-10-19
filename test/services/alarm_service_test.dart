@@ -14,6 +14,9 @@ void main() {
   late AlarmDatabase db;
   late AlarmService service;
   late List<MethodCall> calls;
+  // Channel encoding recreates PlatformException, so identity cannot hold.
+  Matcher isPlatformError(String code) =>
+      isA<PlatformException>().having((e) => e.code, 'code', code);
   Alarm alarm({String id = 'station', bool active = true}) => Alarm(
     id: id,
     name: 'Station',
@@ -92,8 +95,8 @@ void main() {
 
       expect(thrown, isA<AlarmRecoveryException>());
       final recovery = thrown! as AlarmRecoveryException;
-      expect(recovery.originalError, isNot(cleanupError));
-      expect(recovery.recoveryError, same(cleanupError));
+      expect(recovery.originalError, isNot(isA<PlatformException>()));
+      expect(recovery.recoveryError, isPlatformError('REMOVE_FAILED'));
       expect(service.monitoringIssue.value, same(recovery));
       expect((await db.getAllAlarms()).single.isActive, isFalse);
       expect(calls.map((c) => c.method), ['addGeofence', 'removeGeofence']);
@@ -162,8 +165,8 @@ void main() {
 
     expect(thrown, isA<AlarmRecoveryException>());
     final recovery = thrown! as AlarmRecoveryException;
-    expect(recovery.originalError, isNot(recoveryError));
-    expect(recovery.recoveryError, same(recoveryError));
+    expect(recovery.originalError, isNot(isA<PlatformException>()));
+    expect(recovery.recoveryError, isPlatformError('ADD_FAILED'));
     expect(service.monitoringIssue.value, same(recovery));
     expect((await db.getAllAlarms()).single.isActive, isTrue);
   });
@@ -210,7 +213,10 @@ void main() {
       if (call.method == 'removeGeofence') throw removeError;
       return null;
     });
-    await expectLater(service.delete(alarm()), throwsA(same(removeError)));
+    await expectLater(
+      service.delete(alarm()),
+      throwsA(isPlatformError('REMOVE_FAILED')),
+    );
     final originalIssue = service.monitoringIssue.value;
 
     await service.setActive(alarm(), true);
@@ -222,8 +228,11 @@ void main() {
       if (call.method == 'syncGeofences') throw syncError;
       return null;
     });
-    await expectLater(service.synchronize(), throwsA(same(syncError)));
-    expect(service.monitoringIssue.value, same(syncError));
+    await expectLater(
+      service.synchronize(),
+      throwsA(isPlatformError('SYNC_FAILED')),
+    );
+    expect(service.monitoringIssue.value, isPlatformError('SYNC_FAILED'));
 
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);

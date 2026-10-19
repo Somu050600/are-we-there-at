@@ -71,10 +71,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   try {
                     await NativeService.openSettings();
                   } catch (error) {
-                    if (context.mounted)
+                    if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text(errorMessage(error))),
                       );
+                    }
                   }
                 },
                 child: const Text('Settings'),
@@ -86,31 +87,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           child: StreamBuilder<List<Alarm>>(
             stream: _alarms,
             builder: (context, snapshot) {
-              if (snapshot.hasError)
+              if (snapshot.hasError) {
                 return const Center(
                   child: Text(
                     'Could not load saved alarms. Please reopen the app.',
                   ),
                 );
-              if (!snapshot.hasData)
+              }
+              if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
+              }
               final alarms = snapshot.data!;
               if (alarms.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.location_on, size: 64),
-                        SizedBox(height: 24),
-                        Text('No alarms yet', style: TextStyle(fontSize: 24)),
-                        SizedBox(height: 8),
-                        Text(
-                          'Open Google Maps, select a location, tap Share, and choose this app to create a location alarm.',
-                          textAlign: TextAlign.center,
+                // Scrollable so the keyboard or large text cannot overflow it.
+                return LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(32),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.location_on, size: 64),
+                              SizedBox(height: 24),
+                              Text(
+                                'No alarms yet',
+                                style: TextStyle(fontSize: 24),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                'Open Google Maps, select a location, tap Share, and choose this app to create a location alarm.',
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 );
@@ -149,10 +165,11 @@ class _AlarmCardState extends State<_AlarmCard> {
       await operation();
       return true;
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text(errorMessage(error))));
+      }
       return false;
     } finally {
       if (mounted) setState(() => _busy = false);
