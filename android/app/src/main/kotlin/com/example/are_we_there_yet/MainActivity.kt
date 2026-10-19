@@ -251,9 +251,17 @@ class MainActivity : FlutterActivity() {
         }
         scope.launch {
             try {
-                val location = IntentParser.parseText(share.text, SafeGoogleMapsRedirectResolver)
+                val location = IntentParser.parseText(
+                    share.text,
+                    SafeGoogleMapsRedirectResolver,
+                    AndroidPlaceGeocoder(this@MainActivity),
+                )
                 if (location == null) {
-                    result.error("INVALID_SHARE", "The shared item does not contain valid coordinates", null)
+                    result.error(
+                        "INVALID_SHARE",
+                        "Couldn't find where this place is. Check your connection, or share a dropped pin instead.",
+                        null,
+                    )
                 } else {
                     result.success(
                         mapOf(
@@ -261,6 +269,7 @@ class MainActivity : FlutterActivity() {
                             "lng" to location.lng,
                             "name" to location.name,
                             "sharedLink" to share.sharedLink,
+                            "approximate" to location.approximate,
                         ),
                     )
                 }

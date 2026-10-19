@@ -123,12 +123,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
-  void share([String name = 'Station']) => shares.add({
-    'lat': 12.9716,
-    'lng': 77.5946,
-    'name': name,
-    'sharedLink': 'geo:12.9716,77.5946',
-  });
+  void share([String name = 'Station', bool approximate = false]) =>
+      shares.add({
+        'lat': 12.9716,
+        'lng': 77.5946,
+        'name': name,
+        'sharedLink': 'geo:12.9716,77.5946',
+        'approximate': approximate,
+      });
 
   Future<void> tap(WidgetTester tester, Finder finder) async {
     await tester.pumpAndSettle();
@@ -181,6 +183,18 @@ void main() {
     expect(saved.name, 'Station');
     expect(saved.lastUsedAt, now);
     expect(methods().where((m) => m == 'startTrip').length, 1);
+    await finish(tester);
+  });
+
+  appTest('a place found by name is marked approximate', (tester) async {
+    share('Namma Shuttle', true);
+    await mount(tester);
+    expect(find.textContaining('Approximate'), findsOneWidget);
+    await tap(tester, find.text('Cancel'));
+    share();
+    await warmShare(tester);
+    expect(find.textContaining('Approximate'), findsNothing);
+    await tap(tester, find.text('Cancel'));
     await finish(tester);
   });
 

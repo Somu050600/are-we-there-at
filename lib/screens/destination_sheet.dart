@@ -181,6 +181,17 @@ class _DestinationSheetState extends State<DestinationSheet> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (widget.shared?.approximate ?? false)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Approximate — found from the place name. '
+                          'Check it before you rely on the alarm.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.tertiary,
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 16),
                     Text(
                       'Radius: ${_draft.radius.round()} m',

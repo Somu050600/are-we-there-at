@@ -7,11 +7,16 @@ class SharedLocation {
   final double lng;
   final String? name;
   final String? sharedLink;
+
+  /// Found by looking up the shared place's name or address, not read from
+  /// coordinates in the share.
+  final bool approximate;
   const SharedLocation({
     required this.lat,
     required this.lng,
     this.name,
     this.sharedLink,
+    this.approximate = false,
   });
 }
 
@@ -50,6 +55,7 @@ class NativeService {
       lng: lng,
       name: result['name'] as String?,
       sharedLink: result['sharedLink'] as String?,
+      approximate: result['approximate'] == true,
     );
   }
 

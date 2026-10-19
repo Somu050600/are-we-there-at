@@ -6,8 +6,11 @@ arrive. Requires Google Play Services.
 
 ## Using the app
 
-1. Share a Google Maps place or dropped pin, a `geo:` URI, or coordinates with
-   this app. A sheet opens with the coordinates.
+1. Share a place with this app: a Google Maps place or dropped pin (including
+   `maps.app.goo.gl` short links), an Apple Maps, OpenStreetMap, Waze, Bing,
+   HERE or Yandex link, a `geo:` URI, a plus code, or coordinates such as
+   `12.97, 77.59` or `12°58'17"N 77°35'40"E`. Surrounding text is ignored. A
+   sheet opens with the coordinates.
 2. Name it, pick an icon and choose a radius from 50 m to 10 km.
 3. Tap **Start** to save and start the trip, or **Save** to keep it for later.
    Allow precise location and notifications when asked.
@@ -24,9 +27,11 @@ trip runs at a time; starting another replaces it.
 Location is only used during a trip. If the phone restarts or the app is updated
 mid-trip, a notification asks you to reopen the app, which resumes the trip.
 
-Google Maps short links need a network connection. Only links with a recoverable
-coordinate destination can be used; an unresolvable share shows an error instead
-of guessing a location.
+Google Maps short links need a network connection. When a share names a place
+without coordinates (the Google Maps app does this for named places), the place
+is looked up by its name and address with Android's geocoder, and the sheet
+marks the result as approximate so you can check it. A share that can't be
+located shows an error.
 
 Distances are straight-line, not along roads, and GPS can be inaccurate. Choose a
 radius with enough travel buffer and complete the
