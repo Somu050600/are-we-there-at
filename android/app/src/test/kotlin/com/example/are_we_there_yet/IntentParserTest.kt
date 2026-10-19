@@ -11,6 +11,15 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class IntentParserTest {
     @Test
+    fun `unencoded geo line after a title line keeps its coordinates and label`() = runBlocking {
+        val parsed = IntentParser.parseText("Majestic\ngeo:0,0?q=12.9767,77.5713(Majestic)", NoRedirects)
+
+        assertEquals(12.9767, parsed?.lat ?: 0.0, 0.0)
+        assertEquals(77.5713, parsed?.lng ?: 0.0, 0.0)
+        assertEquals("Majestic", parsed?.name)
+    }
+
+    @Test
     fun `encoded geo query supplies coordinates and label`() = runBlocking {
         val parsed = IntentParser.parseText(
             "Shared place\ngeo:0,0?q=37.422%2C-122.084%28Googleplex%29",
