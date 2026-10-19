@@ -2,252 +2,189 @@ package com.example.are_we_there_yet
 
 import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
-import kotlin.text.RegexOption
 
-/**
- * Parses incoming share/view intents into coordinates.
- * Handles geo: URIs, Google Maps URLs (including short links), and plain-text lat/lng.
- */
+fun interface RedirectResolver {
+    suspend fun resolve(url: String): String?
+}
+
+/** Parses only explicit coordinates. It never scrapes arbitrary HTML for coordinate-shaped arrays. */
 object IntentParser {
+    data class ParsedLocation(val lat: Double, val lng: Double, val name: String? = null)
 
-    private val TAG = "IntentParser"
+    private val pair = Regex("""(?<![\d.])([+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*,\s*([+-]?(?:\d+(?:\.\d+)?|\.\d+))(?![\d.])""")
+    private val destination = Regex("""!3d([+-]?(?:\d+(?:\.\d+)?|\.\d+))!4d([+-]?(?:\d+(?:\.\d+)?|\.\d+))""", RegexOption.IGNORE_CASE)
+    private val destinationLngFirst = Regex("""!2d([+-]?(?:\d+(?:\.\d+)?|\.\d+))!3d([+-]?(?:\d+(?:\.\d+)?|\.\d+))""", RegexOption.IGNORE_CASE)
+    private val destinationMarker = Regex("""!(?:3d[^!/?&#]+!4d|2d[^!/?&#]+!3d)[^!/?&#]+""", RegexOption.IGNORE_CASE)
+    private val viewport = Regex("""@([+-]?(?:\d+(?:\.\d+)?|\.\d+)),([+-]?(?:\d+(?:\.\d+)?|\.\d+))""")
+    private val webUrl = Regex("""https?://[^\s<>]+""", RegexOption.IGNORE_CASE)
+    private val geoLine = Regex("""(?im)\bgeo:[^\r\n]+""")
 
-    data class ParsedLocation(val lat: Double, val lng: Double, val name: String?)
-
-    /**
-     * Attempts to extract a location from an Intent.
-     * Suspend because short URLs may need network resolution.
-     */
-    suspend fun parse(intent: Intent): ParsedLocation? {
-        return when (intent.action) {
-            Intent.ACTION_VIEW -> parseViewIntent(intent)
-            Intent.ACTION_SEND -> parseSendIntent(intent)
+    suspend fun parse(
+        intent: Intent,
+        resolver: RedirectResolver = SafeGoogleMapsRedirectResolver,
+    ): ParsedLocation? {
+        val text = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> intent.data?.toString()
             else -> null
-        }
+        } ?: return null
+        return parseText(text, resolver)
     }
 
-    // ── ACTION_VIEW  (geo: URIs) ───────────────────────────────
+    internal suspend fun parseText(text: String, resolver: RedirectResolver): ParsedLocation? {
+        geoLine.find(text)?.value?.let { return parseGeo(it) }
 
-    private suspend fun parseViewIntent(intent: Intent): ParsedLocation? {
-        val uri = intent.data ?: return null
-        if (uri.scheme == "geo") return parseGeoUri(uri)
-        return parseMapUrlDirect(uri.toString())
-    }
-
-    // ── ACTION_SEND  (shared text) ─────────────────────────────
-
-    private suspend fun parseSendIntent(intent: Intent): ParsedLocation? {
-        val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
-        Log.d(TAG, "Shared text: $text")
-
-        // Try direct URL parsing first
-        val directResult = parseMapUrlDirect(text)
-        if (directResult != null) return directResult
-
-        // Check if it contains a URL that needs network resolution
-        val url = extractUrl(text)
-        if (url != null) {
-            val networkResult = resolveViaNetwork(url)
-            if (networkResult != null) return networkResult
+        var textWithoutUrls = text
+        for (match in webUrl.findAll(text)) {
+            val url = trimUrlPunctuation(match.value)
+            parseMapUrl(url)?.let { return it }
+            if (SafeGoogleMapsRedirectResolver.canResolve(url)) {
+                resolver.resolve(url)?.let(::parseMapUrl)?.let { return it }
+            }
+            textWithoutUrls = textWithoutUrls.replaceRange(match.range, " ".repeat(match.value.length))
         }
 
-        return parseLatLngFromText(text)
+        return pair.find(textWithoutUrls)?.let { location(it.groupValues[1], it.groupValues[2], null) }
     }
 
-    // Extract first URL from text
-    private val URL_REGEX = Regex("""https?://\S+""")
-    private fun extractUrl(text: String): String? = URL_REGEX.find(text)?.value
+    private fun parseGeo(text: String): ParsedLocation? {
+        val uri = runCatching { Uri.parse(text.trim()) }.getOrNull() ?: return null
+        if (!uri.scheme.equals("geo", ignoreCase = true)) return null
+        val schemeSpecificPart = uri.encodedSchemeSpecificPart ?: return null
+        val encodedQuery = schemeSpecificPart.substringAfter('?', missingDelimiterValue = "")
+        val hasQuery = '?' in schemeSpecificPart
+        val q = encodedQuery.split('&').firstNotNullOfOrNull { parameter ->
+            val key = parameter.substringBefore('=', missingDelimiterValue = parameter)
+            if (Uri.decode(key).equals("q", ignoreCase = true)) {
+                parameter.substringAfter('=', missingDelimiterValue = "")
+            } else {
+                null
+            }
+        }
+        if (q != null) {
+            val decoded = Uri.decode(q).replace('+', ' ')
+            val match = pair.find(decoded)
+            if (match != null) {
+                val remainder = decoded.substring(match.range.last + 1).trim()
+                val label = remainder.removePrefix("(").removeSuffix(")").trim().takeIf {
+                    remainder.startsWith('(') && remainder.endsWith(')') && it.isNotEmpty()
+                }
+                location(match.groupValues[1], match.groupValues[2], label)?.let { return it }
+            }
+            return null
+        }
+        if (hasQuery) return null
+        val coordinates = Uri.decode(schemeSpecificPart.substringBefore('?'))
+        val match = pair.find(coordinates) ?: return null
+        return location(match.groupValues[1], match.groupValues[2], null)
+    }
 
-    /**
-     * Resolves a URL via network: follows all redirects, then if the final
-     * URL still has no coords, fetches the page and scrapes them from HTML.
-     */
-    private suspend fun resolveViaNetwork(url: String): ParsedLocation? =
-        withContext(Dispatchers.IO) {
+    internal fun parseMapUrl(url: String): ParsedLocation? {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+        if (uri.scheme != "https" && uri.scheme != "http") return null
+        if (!isGoogleMapsHost(uri.host)) return null
+        val name = placeName(uri)
+
+        val latFirstDestinations = destination.findAll(url).toList()
+        val lngFirstDestinations = destinationLngFirst.findAll(url).toList()
+        latFirstDestinations.lastOrNull()?.let { match ->
+            return location(match.groupValues[1], match.groupValues[2], name)
+        }
+        lngFirstDestinations.lastOrNull()?.let { match ->
+            return location(match.groupValues[2], match.groupValues[1], name)
+        }
+        if (destinationMarker.containsMatchIn(url)) return null
+
+        for (key in listOf("query", "q", "ll", "destination")) {
+            val value = uri.getQueryParameter(key) ?: continue
+            val match = pair.find(Uri.decode(value)) ?: return null
+            return location(match.groupValues[1], match.groupValues[2], name)
+        }
+
+        val at = viewport.find(url)
+        return at?.let { location(it.groupValues[1], it.groupValues[2], name) }
+    }
+
+    private fun placeName(uri: Uri): String? {
+        val segments = uri.pathSegments
+        val placeIndex = segments.indexOf("place")
+        if (placeIndex < 0 || placeIndex + 1 >= segments.size) return null
+        return Uri.decode(segments[placeIndex + 1])
+            .replace('+', ' ')
+            .trim()
+            .takeIf { it.length in 2..120 && pair.matchEntire(it) == null }
+    }
+
+    private fun trimUrlPunctuation(value: String): String {
+        var result = value.trimEnd('.', ',', ';', ':', '!', '?')
+        while (result.endsWith(')') && result.count { it == ')' } > result.count { it == '(' }) {
+            result = result.dropLast(1)
+        }
+        return result
+    }
+
+    private fun location(latText: String, lngText: String, name: String?): ParsedLocation? {
+        val lat = latText.toDoubleOrNull() ?: return null
+        val lng = lngText.toDoubleOrNull() ?: return null
+        if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) {
+            return null
+        }
+        return ParsedLocation(lat, lng, name?.trim()?.takeIf(String::isNotEmpty))
+    }
+
+    internal fun isGoogleMapsHost(host: String?): Boolean {
+        val normalized = host?.lowercase() ?: return false
+        return normalized == "google.com" || normalized.endsWith(".google.com") ||
+            normalized == "maps.app.goo.gl" || normalized == "goo.gl"
+    }
+}
+
+/** Resolves a small HTTPS redirect chain without reading response bodies. */
+object SafeGoogleMapsRedirectResolver : RedirectResolver {
+    private const val MAX_REDIRECTS = 5
+    private const val TIMEOUT_MILLIS = 4_000
+
+    internal fun canResolve(value: String): Boolean {
+        val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return false
+        val host = uri.host?.lowercase()
+        return uri.scheme == "https" && uri.userInfo == null && (uri.port == -1 || uri.port == 443) &&
+            (host == "maps.app.goo.gl" || host == "goo.gl")
+    }
+
+    override suspend fun resolve(url: String): String? = withContext(Dispatchers.IO) {
+        if (!canResolve(url)) return@withContext null
+        var current = url
+        repeat(MAX_REDIRECTS + 1) { redirectCount ->
+            if (current != url && IntentParser.parseMapUrl(current) != null) return@withContext current
+            val parsed = runCatching { URL(current) }.getOrNull() ?: return@withContext null
+            if (parsed.protocol != "https" || parsed.userInfo != null ||
+                (parsed.port != -1 && parsed.port != 443) || !IntentParser.isGoogleMapsHost(parsed.host)) {
+                return@withContext null
+            }
+            val connection = (parsed.openConnection() as? HttpURLConnection) ?: return@withContext null
             try {
-                Log.d(TAG, "Resolving via network: $url")
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.instanceFollowRedirects = true  // follow full chain
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0")
-                conn.connect()
-
-                val finalUrl = conn.url.toString()
-                Log.d(TAG, "Final URL: $finalUrl")
-
-                val nameFromUrl = extractPlaceNameFromUrl(finalUrl)
-
-                // 1. Try parsing the final URL for coords
-                val fromUrl = parseMapUrlDirect(finalUrl)
-                if (fromUrl != null) {
-                    conn.disconnect()
-                    val name = fromUrl.name ?: nameFromUrl
-                    return@withContext ParsedLocation(fromUrl.lat, fromUrl.lng, name)
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = TIMEOUT_MILLIS
+                connection.readTimeout = TIMEOUT_MILLIS
+                connection.requestMethod = "GET"
+                connection.setRequestProperty("User-Agent", "AreWeThereYet/1")
+                connection.setRequestProperty("Range", "bytes=0-0")
+                val code = connection.responseCode
+                if (code in 300..399) {
+                    if (redirectCount == MAX_REDIRECTS) return@withContext null
+                    val location = connection.getHeaderField("Location") ?: return@withContext null
+                    current = URL(parsed, location).toString()
+                } else {
+                    return@withContext current.takeIf { code in 200..299 }
                 }
-
-                // 2. Read page body and search for coords in HTML/JS
-                val body = conn.inputStream.bufferedReader().use { it.readText() }
-                conn.disconnect()
-
-                val fromBody = extractCoordsFromHtml(body)
-                if (fromBody != null) {
-                    val nameFromHtml = extractNameFromHtml(body)
-                    val name = nameFromHtml ?: nameFromUrl
-                    Log.d(TAG, "Extracted from page body: $fromBody, name: $name")
-                    return@withContext ParsedLocation(fromBody.lat, fromBody.lng, name)
-                }
-
-                null
-            } catch (e: Exception) {
-                Log.e(TAG, "Network resolution failed: $url", e)
-                null
+            } finally {
+                connection.disconnect()
             }
         }
-
-    /** Extracts a short place name from a Google Maps URL path, e.g. /place/ABC+Restaurant/ */
-    private fun extractPlaceNameFromUrl(url: String): String? {
-        val placeMatch = Regex("""/place/([^/]+?)(?:/|@|$)""").find(url) ?: return null
-        val encoded = placeMatch.groupValues[1]
-        if (encoded.isBlank()) return null
-        return try {
-            var name = URLDecoder.decode(encoded, StandardCharsets.UTF_8.name())
-                .replace('+', ' ')
-                .trim()
-            // Skip if it looks like coordinates or too short/long
-            if (name.length < 2 || name.length > 120) return null
-            if (Regex("""^-?\d+\.?\d*,\s*-?\d+\.?\d*$""").matches(name)) return null
-            name
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    /** Tries to get place name from page HTML (e.g. og:title). */
-    private fun extractNameFromHtml(html: String): String? {
-        val ogTitle = Regex("""<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
-            .find(html)?.groupValues?.get(1)
-            ?: Regex("""content=["']([^"']+)["'][^>]*property=["']og:title["']""", RegexOption.IGNORE_CASE)
-                .find(html)?.groupValues?.get(1)
-        if (!ogTitle.isNullOrBlank()) {
-            val cleaned = ogTitle.replace(Regex("""\s*[-–—]\s*Google\s+Maps\s*$""", RegexOption.IGNORE_CASE), "").trim()
-            if (cleaned.length in 2..120) return cleaned
-        }
-        return null
-    }
-
-    // Patterns found in Google Maps page HTML/JS that contain coordinates
-    private val HTML_COORD_PATTERNS = listOf(
-        // window.APP_INITIALIZATION_STATE contains [null,null,lat,lng]
-        Regex("""\[null,null,(-?\d+\.\d{4,8}),(-?\d+\.\d{4,8})\]"""),
-        // meta og:image or other tags: center=lat%2Clng
-        Regex("""center=(-?\d+\.\d{4,8})%2C(-?\d+\.\d{4,8})"""),
-        // /@lat,lng in canonical or other embedded URLs
-        Regex("""/@(-?\d+\.\d{4,8}),(-?\d+\.\d{4,8})"""),
-        // [lat, lng] in JSON-like structures (common in Maps page data)
-        Regex("""\[(-?\d+\.\d{5,8}),(-?\d+\.\d{5,8})\]"""),
-    )
-
-    private fun extractCoordsFromHtml(html: String): ParsedLocation? {
-        for (pattern in HTML_COORD_PATTERNS) {
-            val match = pattern.find(html)
-            if (match != null) {
-                val result = locOrNull(match.groupValues[1], match.groupValues[2], null)
-                if (result != null) return result
-            }
-        }
-        return null
-    }
-
-    // ── geo: URI parser ────────────────────────────────────────
-    // Formats:
-    //   geo:37.7749,-122.4194
-    //   geo:0,0?q=37.7749,-122.4194(Label)
-    //   geo:37.7749,-122.4194?z=15
-
-    private fun parseGeoUri(uri: Uri): ParsedLocation? {
-        val ssp = uri.schemeSpecificPart ?: return null  // everything after "geo:"
-
-        // Check ?q= parameter first (may contain coords + label)
-        val qParam = uri.getQueryParameter("q")
-        if (qParam != null) {
-            val qResult = parseQParam(qParam)
-            if (qResult != null) return qResult
-        }
-
-        // Fall back to the lat,lng before the '?'
-        val coordsPart = ssp.substringBefore('?')
-        return parsePair(coordsPart)
-    }
-
-    // q=37.7749,-122.4194  or  q=37.7749,-122.4194(Place Name)
-    private fun parseQParam(q: String): ParsedLocation? {
-        val labelMatch = Regex("""^(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\((.+)\)$""").find(q)
-        if (labelMatch != null) {
-            val (lat, lng, name) = labelMatch.destructured
-            return locOrNull(lat, lng, name)
-        }
-        return parsePair(q)
-    }
-
-    // ── Google Maps / generic map URL parser ───────────────────
-
-    private val MAP_PATTERNS = listOf(
-        // @lat,lng,zoom
-        Regex("""@(-?\d+\.?\d*),(-?\d+\.?\d*)"""),
-        // ?q=lat,lng  or &q=lat,lng
-        Regex("""[?&]q=(-?\d+\.?\d*),(-?\d+\.?\d*)"""),
-        // /place/lat,lng
-        Regex("""/place/[^/]*/@(-?\d+\.?\d*),(-?\d+\.?\d*)"""),
-        // ll=lat,lng
-        Regex("""ll=(-?\d+\.?\d*),(-?\d+\.?\d*)"""),
-        // query=lat,lng
-        Regex("""query=(-?\d+\.?\d*),(-?\d+\.?\d*)"""),
-    )
-
-    private fun parseMapUrlDirect(text: String): ParsedLocation? {
-        for (pattern in MAP_PATTERNS) {
-            val match = pattern.find(text)
-            if (match != null) {
-                val result = locOrNull(match.groupValues[1], match.groupValues[2], null)
-                if (result != null) {
-                    Log.d(TAG, "Matched pattern: $pattern -> $result")
-                    return result
-                }
-            }
-        }
-        return null
-    }
-
-    // ── Fallback: plain-text lat/lng extraction ────────────────
-
-    // Matches patterns like "37.7749, -122.4194" anywhere in text
-    private val LATLNG_REGEX = Regex("""(-?\d{1,3}\.\d{3,8}),\s*(-?\d{1,3}\.\d{3,8})""")
-
-    private fun parseLatLngFromText(text: String): ParsedLocation? {
-        val match = LATLNG_REGEX.find(text) ?: return null
-        return locOrNull(match.groupValues[1], match.groupValues[2], null)
-    }
-
-    // ── Helpers ────────────────────────────────────────────────
-
-    private fun parsePair(s: String): ParsedLocation? {
-        val parts = s.split(",")
-        if (parts.size < 2) return null
-        return locOrNull(parts[0].trim(), parts[1].trim(), null)
-    }
-
-    private fun locOrNull(latStr: String, lngStr: String, name: String?): ParsedLocation? {
-        val lat = latStr.toDoubleOrNull() ?: return null
-        val lng = lngStr.toDoubleOrNull() ?: return null
-        if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
-        return ParsedLocation(lat, lng, name?.takeIf { it.isNotBlank() })
+        null
     }
 }

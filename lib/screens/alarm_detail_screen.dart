@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/alarm.dart';
+import '../services/shared_link.dart';
 
 /// Read-only detail screen for a saved alarm (name, coords, radius, date, shared link).
 class AlarmDetailScreen extends StatelessWidget {
@@ -15,9 +16,11 @@ class AlarmDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final displayName = alarm.name ??
+    final displayName =
+        alarm.name ??
         '${alarm.latitude.toStringAsFixed(5)}, ${alarm.longitude.toStringAsFixed(5)}';
-    final coords = '${alarm.latitude.toStringAsFixed(5)}, ${alarm.longitude.toStringAsFixed(5)}';
+    final coords =
+        '${alarm.latitude.toStringAsFixed(5)}, ${alarm.longitude.toStringAsFixed(5)}';
     final radiusText = alarm.radius >= 1000
         ? '${(alarm.radius / 1000).toStringAsFixed(1)} km'
         : '${alarm.radius.toInt()} m';
@@ -36,7 +39,11 @@ class AlarmDetailScreen extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Icon(Icons.place, color: theme.colorScheme.primary, size: 28),
+                      Icon(
+                        Icons.place,
+                        color: theme.colorScheme.primary,
+                        size: 28,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -54,7 +61,8 @@ class AlarmDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-          if (alarm.sharedLink != null && alarm.sharedLink!.trim().isNotEmpty) ...[
+          if (alarm.sharedLink != null &&
+              alarm.sharedLink!.trim().isNotEmpty) ...[
             const SizedBox(height: 24),
             Text('Shared link', style: theme.textTheme.titleSmall),
             const SizedBox(height: 8),
@@ -73,13 +81,15 @@ class AlarmDetailScreen extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton.icon(
-                          onPressed: () => _copyLink(context, alarm.sharedLink!),
+                          onPressed: () =>
+                              _copyLink(context, alarm.sharedLink!),
                           icon: const Icon(Icons.copy),
                           label: const Text('Copy'),
                         ),
                         const SizedBox(width: 8),
                         FilledButton.icon(
-                          onPressed: () => _openLink(alarm.sharedLink!),
+                          onPressed: () =>
+                              _openLink(context, alarm.sharedLink!),
                           icon: const Icon(Icons.open_in_browser),
                           label: const Text('Open'),
                         ),
@@ -119,16 +129,32 @@ class AlarmDetailScreen extends StatelessWidget {
     await Clipboard.setData(ClipboardData(text: link));
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copied'), behavior: SnackBarBehavior.floating),
+        const SnackBar(
+          content: Text('Link copied'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
 
-  Future<void> _openLink(String link) async {
-    final uri = Uri.tryParse(link);
-    if (uri == null) return;
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+  Future<void> _openLink(BuildContext context, String link) async {
+    final uri =
+        sharedLinkUri(link) ??
+        Uri.https('www.google.com', '/maps/search/', {
+          'api': '1',
+          'query': '${alarm.latitude},${alarm.longitude}',
+        });
+    try {
+      if (await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    } catch (_) {
+      // Keep the original shared text available to copy if opening fails.
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open the map. Try copying the shared link.'),
+        ),
+      );
     }
   }
 }
@@ -149,7 +175,12 @@ class _DetailRow extends StatelessWidget {
         children: [
           SizedBox(
             width: 100,
-            child: Text(label, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            child: Text(
+              label,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
         ],

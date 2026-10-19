@@ -1,79 +1,70 @@
 package com.example.are_we_there_yet
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
-import android.util.Log
 import androidx.core.content.ContextCompat
-import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
-import com.google.android.gms.tasks.Task
 
-/**
- * Handles geofence registration and permission checks (read-only).
- * Does NOT request permissions — that is MainActivity's job.
- */
-class GeofenceManager(private val context: Context) {
+interface GeofenceGateway {
+    fun add(alarms: List<AlarmRecord>, initialTrigger: Boolean, callback: (Result<Unit>) -> Unit)
+    fun remove(ids: Set<String>, callback: (Result<Unit>) -> Unit)
+}
 
-    private val geofencingClient: GeofencingClient =
-        LocationServices.getGeofencingClient(context)
-    private val TAG = "GeofenceManager"
+class GeofenceManager(private val context: Context) : GeofenceGateway {
+    private val client = LocationServices.getGeofencingClient(context)
 
-    // ── Permission checks (read-only) ──────────────────────────
+    fun hasFineLocationPermission() = ContextCompat.checkSelfPermission(
+        context, Manifest.permission.ACCESS_FINE_LOCATION,
+    ) == PackageManager.PERMISSION_GRANTED
 
-    fun hasLocationPermission(): Boolean =
-        ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-    fun hasBackgroundLocationPermission(): Boolean =
-        ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+    fun hasBackgroundLocationPermission() = android.os.Build.VERSION.SDK_INT < 29 ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
 
     fun isLocationEnabled(): Boolean {
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        return lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-               lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        return manager.isProviderEnabled(LocationManager.GPS_PROVIDER) || manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
     }
 
-    // ── Geofence registration ──────────────────────────────────
+    @SuppressLint("MissingPermission")
+    override fun add(alarms: List<AlarmRecord>, initialTrigger: Boolean, callback: (Result<Unit>) -> Unit) {
+        if (alarms.isEmpty()) return callback(Result.success(Unit))
+        val request = buildRequest(alarms, initialTrigger)
+        client.addGeofences(request, pendingIntent())
+            .addOnSuccessListener { callback(Result.success(Unit)) }
+            .addOnFailureListener { callback(Result.failure(it)) }
+    }
 
-    /**
-     * Builds a circular ENTER-only geofence and registers it.
-     * Returns a Task so the caller can attach success/failure listeners.
-     */
-    fun addGeofence(
-        id: String,
-        latitude: Double,
-        longitude: Double,
-        radius: Float,
-        pendingIntent: android.app.PendingIntent
-    ): Task<Void> {
+    override fun remove(ids: Set<String>, callback: (Result<Unit>) -> Unit) {
+        if (ids.isEmpty()) return callback(Result.success(Unit))
+        client.removeGeofences(ids.toList())
+            .addOnSuccessListener { callback(Result.success(Unit)) }
+            .addOnFailureListener { callback(Result.failure(it)) }
+    }
 
-        val geofence = Geofence.Builder()
-            .setRequestId(id)
-            .setCircularRegion(latitude, longitude, radius)
-            .setExpirationDuration(Geofence.NEVER_EXPIRE)
-            .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER)
-            .build()
+    private fun pendingIntent() = PendingIntent.getBroadcast(
+        context, 0, Intent(context, GeofenceReceiver::class.java),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+    )
 
-        val request = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
-            .addGeofence(geofence)
-            .build()
-
-        return geofencingClient.addGeofences(request, pendingIntent)
-            .addOnSuccessListener {
-                Log.d(TAG, "Geofence registered: $id")
+    companion object {
+        internal fun buildRequest(alarms: List<AlarmRecord>, initialTrigger: Boolean): GeofencingRequest {
+            val geofences = alarms.map { alarm ->
+                Geofence.Builder().setRequestId(alarm.id)
+                    .setCircularRegion(alarm.latitude, alarm.longitude, alarm.radius)
+                    .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER).build()
             }
-            .addOnFailureListener { e ->
-                val msg = if (e is ApiException) "code=${e.statusCode}" else e.message
-                Log.e(TAG, "Geofence registration failed ($id): $msg", e)
-            }
+            return GeofencingRequest.Builder()
+                .addGeofences(geofences)
+                .setInitialTrigger(if (initialTrigger) GeofencingRequest.INITIAL_TRIGGER_ENTER else 0)
+                .build()
+        }
     }
 }

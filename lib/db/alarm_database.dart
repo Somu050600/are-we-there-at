@@ -28,13 +28,13 @@ class Alarms extends Table {
 
 @DriftDatabase(tables: [Alarms])
 class AlarmDatabase extends _$AlarmDatabase {
-  AlarmDatabase._internal(super.e);
+  AlarmDatabase(super.e);
 
   static AlarmDatabase? _instance;
 
   /// Singleton accessor.
   static AlarmDatabase get instance {
-    _instance ??= AlarmDatabase._internal(_openConnection());
+    _instance ??= AlarmDatabase(_openConnection());
     return _instance!;
   }
 
@@ -43,12 +43,12 @@ class AlarmDatabase extends _$AlarmDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onUpgrade: (migrator, from, to) async {
-          if (from < 2) {
-            await migrator.addColumn(alarms, alarms.sharedLink);
-          }
-        },
-      );
+    onUpgrade: (migrator, from, to) async {
+      if (from < 2) {
+        await migrator.addColumn(alarms, alarms.sharedLink);
+      }
+    },
+  );
 
   // ── Queries ──────────────────────────────────────────────────
 
@@ -56,23 +56,33 @@ class AlarmDatabase extends _$AlarmDatabase {
   Stream<List<model.Alarm>> watchAllAlarms() {
     final query = select(alarms)
       ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
-    return query.watch().map(
-      (rows) => rows.map(_toModel).toList(),
-    );
+    return query.watch().map((rows) => rows.map(_toModel).toList());
+  }
+
+  Future<List<model.Alarm>> getAllAlarms() async =>
+      (await select(alarms).get()).map(_toModel).toList();
+
+  Future<model.Alarm?> getAlarm(String id) async {
+    final row = await (select(
+      alarms,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+    return row == null ? null : _toModel(row);
   }
 
   /// Insert a new alarm.
   Future<void> insertAlarm(model.Alarm alarm) {
-    return into(alarms).insert(AlarmsCompanion.insert(
-      id: alarm.id,
-      name: Value(alarm.name),
-      latitude: alarm.latitude,
-      longitude: alarm.longitude,
-      radius: alarm.radius,
-      createdAt: alarm.createdAt,
-      isActive: Value(alarm.isActive),
-      sharedLink: Value(alarm.sharedLink),
-    ));
+    return into(alarms).insert(
+      AlarmsCompanion.insert(
+        id: alarm.id,
+        name: Value(alarm.name),
+        latitude: alarm.latitude,
+        longitude: alarm.longitude,
+        radius: alarm.radius,
+        createdAt: alarm.createdAt,
+        isActive: Value(alarm.isActive),
+        sharedLink: Value(alarm.sharedLink),
+      ),
+    );
   }
 
   /// Delete an alarm by id.
@@ -82,22 +92,23 @@ class AlarmDatabase extends _$AlarmDatabase {
 
   /// Toggle active state.
   Future<void> toggleAlarm(String id, bool active) {
-    return (update(alarms)..where((t) => t.id.equals(id)))
-        .write(AlarmsCompanion(isActive: Value(active)));
+    return (update(alarms)..where((t) => t.id.equals(id))).write(
+      AlarmsCompanion(isActive: Value(active)),
+    );
   }
 
   // ── Mapping ──────────────────────────────────────────────────
 
   model.Alarm _toModel(AlarmEntry row) => model.Alarm(
-        id: row.id,
-        name: row.name,
-        latitude: row.latitude,
-        longitude: row.longitude,
-        radius: row.radius,
-        createdAt: row.createdAt,
-        isActive: row.isActive,
-        sharedLink: row.sharedLink,
-      );
+    id: row.id,
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    radius: row.radius,
+    createdAt: row.createdAt,
+    isActive: row.isActive,
+    sharedLink: row.sharedLink,
+  );
 }
 
 LazyDatabase _openConnection() {

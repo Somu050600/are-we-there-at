@@ -1,32 +1,57 @@
 # Are We There Yet
 
-Location-based alarms: share a place from a map app, set a radius, and get notified when you arrive. Android only (uses geofences).
+Android location alarms. Share a destination from a maps app, choose a radius,
+and receive an arrival notification when Android detects entry into the area.
+Requires Google Play Services.
 
-## Features
+## Using the app
 
-- **Share to create** — From Google Maps (or any app that shares a location), tap Share and choose this app. Supported inputs:
-  - `geo:` URIs (with optional place label)
-  - Google Maps URLs (including short links like `maps.app.goo.gl`; the app resolves them and scrapes coordinates when needed)
-  - Plain text lat/lng
-- **Configure alarm** — Set alert radius (50 m–10 km), optional alarm title (or use the parsed place name / coordinates as label).
-- **Stored metadata** — The raw shared link is saved with each alarm so you can open or copy it later.
-- **Alarm list** — Home screen lists all alarms with active toggle and swipe-to-delete.
-- **Alarm details** — Tap an alarm to see name, coordinates, radius, created time, and the shared link (Open in browser / Copy).
-- **Geofence notifications** — Entering the circle triggers the alarm (notification via Android).
+1. Share a Google Maps destination, a `geo:` URI, or coordinates with this app.
+2. Check the destination, enter an optional title, and choose 50 m–10 km.
+3. Save and complete the precise location, background location and notification
+   permission prompts. Android may require enabling “Allow all the time” in settings.
+4. Use the switch to stop or resume monitoring. Swipe a card to delete it, or tap
+   it to inspect the destination and open/copy the original shared link.
 
-## Tech
+Alarms are recurring: entering the area can alert again on a later visit. Disable
+or delete an alarm when it is no longer needed. Dismissing an arrival notification
+stops that notification, but keeps the destination enabled.
 
-- **Flutter (Dart)** — UI, routing, local DB. Material 3.
-- **Drift** — SQLite with a single `alarms` table (id, name, lat, lng, radius, createdAt, isActive, sharedLink); schema migration for adding `sharedLink`.
-- **Kotlin (Android)** — Share/view intent handling, URL resolution (redirects + HTML scrape for short Maps links), place-name extraction from URL path and `og:title`, geofence registration (Google Play Services), MethodChannel to Flutter (`getSharedLocation`, `addGeofence`).
-- **Other** — `url_launcher` for opening stored links, `path_provider` + `uuid` for DB and IDs.
+If the list shows “Monitoring needs attention”, use Retry after fixing the
+reported setting. Failed saves and switches display errors. The app reconciles
+saved alarms with Android monitoring when reopened.
 
-## Getting started
+Google Maps short links need a network connection. Only links with a recoverable
+coordinate destination can be used; some links describe a place without exposing
+coordinates. An unresolvable share should show an error instead of guessing a
+location.
+
+Background geofences are not exact arrival timers. Delivery can be delayed and
+small radii can be affected by location accuracy and battery restrictions. Choose
+enough travel buffer and complete the [device checklist](docs/device-test-checklist.md)
+before relying on the app on a trip.
+
+## Development
+
+Flutter 3.38.9 / Dart 3.10.8, Java 17, Android SDK 36. Flutter owns the UI and
+Drift SQLite database; Kotlin handles incoming shares, permissions, geofences,
+notifications and restoration. Database schema version 2 preserves existing data.
 
 ```bash
 flutter pub get
-dart run build_runner build   # Drift codegen
-flutter run
+flutter analyze
+flutter test --coverage
+flutter build apk --debug
+cd android
+./gradlew testDebugUnitTest
 ```
 
-Requires Android with Google Play Services. Location (including background) permission is needed for geofences.
+On Linux, SQLite tests require `libsqlite3-dev`. The generated Drift file is
+checked in; after changing the database definition, regenerate it with
+`dart run build_runner build --delete-conflicting-outputs`.
+
+GitHub Actions runs analysis, functional tests and the debug APK build. Unit and
+widget tests exercise failure recovery as well as normal flows. Android unit tests
+use a simulated Android environment; actual GPS, permission dialogs, Doze and OEM
+battery behavior still require the physical device checklist. The debug APK is a
+development build. Store distribution needs a production signing configuration.
