@@ -59,7 +59,11 @@ class GeofenceManager(private val context: Context) : GeofenceGateway {
                 Geofence.Builder().setRequestId(alarm.id)
                     .setCircularRegion(alarm.latitude, alarm.longitude, alarm.radius)
                     .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER).build()
+                    // EXIT is requested only so Play services records leaving the radius;
+                    // otherwise it stays "inside" and blocks every later ENTER.
+                    // GeofenceReceiver alerts on ENTER and ignores EXIT.
+                    .setTransitionTypes(Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT)
+                    .build()
             }
             return GeofencingRequest.Builder()
                 .addGeofences(geofences)

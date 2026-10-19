@@ -294,12 +294,17 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun permissionError(operation: ActiveOperation, permission: String) {
-        val code = if (ActivityCompat.shouldShowRequestPermissionRationale(this, permission)) {
-            "PERMISSION_DENIED"
-        } else {
-            "PERMISSION_PERMANENTLY_DENIED"
+        val canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(this, permission)
+        val code = if (canAskAgain) "PERMISSION_DENIED" else "PERMISSION_PERMANENTLY_DENIED"
+        // Shown to the user as-is by the configuration screen.
+        val needed = when (permission) {
+            Manifest.permission.ACCESS_FINE_LOCATION -> "Allow precise location to set an arrival alarm."
+            Manifest.permission.ACCESS_BACKGROUND_LOCATION ->
+                "Set location access to \"Allow all the time\" so alarms work while the app is closed."
+            Manifest.permission.POST_NOTIFICATIONS -> "Allow notifications so the arrival alarm can alert you."
+            else -> "A required permission was not granted."
         }
-        fail(operation, code, "Permission not granted: $permission")
+        fail(operation, code, if (canAskAgain) needed else "$needed You can change this in Android Settings.")
     }
 
     private fun fail(operation: ActiveOperation, code: String, message: String) {
