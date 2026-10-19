@@ -1,15 +1,23 @@
 name: Release
 
 # Publishing a GitHub release (tag vX.Y.Z or vX.Y.Z-rc.N) builds a signed APK
-# and attaches it to that release.
+# and attaches it to that release. Run it manually with a tag to rebuild the
+# APK for an existing release, e.g. after a failed run:
+#   gh workflow run Release -f tag=v0.2.0
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build, e.g. v0.2.0
+        required: true
 
 permissions:
   contents: write
 
 env:
+  RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}
   # SHA-256 of the release signing certificate. Updates only install over an
   # APK signed with this same key, so a build signed with anything else fails.
   RELEASE_CERT_SHA256: dc9225131afc0272579ed5189db48ba3215b78d73e60374e0c45405e90d20437
@@ -20,10 +28,12 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Version from tag
         run: |
-          tag="${GITHUB_REF_NAME}"
+          tag="$RELEASE_TAG"
           version="${tag#v}"
           if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
             echo "::error::Release tag '$tag' must look like v1.2.3 or v1.2.3-rc.1"
@@ -82,9 +92,13 @@ jobs:
 
       - name: Verify signing key
         run: |
+          set -euo pipefail
           apk=build/app/outputs/flutter-apk/app-release.apk
-          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
-          digest="$("$apksigner" verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          apksigner="$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools" -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
+          echo "Using $apksigner"
+          # Certificates are public; print them so a mismatch is easy to read.
+          "$apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/certs.txt"
+          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/certs.txt" | head -1)"
           if [ "$digest" != "$RELEASE_CERT_SHA256" ]; then
             echo "::error::APK is signed with $digest, expected the release key $RELEASE_CERT_SHA256"
             exit 1
@@ -98,6 +112,7 @@ jobs:
       - name: Upload APK to release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
           files: build/are-we-there-yet-${{ env.APP_VERSION }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
