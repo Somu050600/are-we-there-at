@@ -113,6 +113,7 @@ class TripServiceTest {
         assertTrue(shadowOf(controller.get()).isStoppedBySelf)
         val alarm = shadowOf(manager).getNotification(TripNotifications.ARRIVAL_ID)
         assertEquals("Arrived at Station", alarm.extras.getString(Notification.EXTRA_TITLE))
+        assertNull(shadowOf(manager).getNotification(TripNotifications.PROGRESS_ID))
     }
 
     @Test
@@ -175,12 +176,34 @@ class TripServiceTest {
     fun `boot turns an interrupted trip into a resume notice`() {
         TripStore(context).saveActive(trip)
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
-        assertNull(TripStore(context).active())
+        // Kept so that opening the app from the notice resumes it.
+        assertEquals(trip, TripStore(context).active())
         val notice = shadowOf(manager).getNotification(TripNotifications.RESTART_ID)
         assertEquals(
             "Trip to Station stopped by restart. Tap to resume.",
             notice.extras.getCharSequence(Notification.EXTRA_TEXT).toString(),
         )
+    }
+
+    @Test
+    fun `explicit recover resumes the stored trip`() {
+        TripStore(context).saveActive(trip.copy(startDistance = 1_000.0))
+        val controller = Robolectric.buildService(TripService::class.java).create()
+        assertTrue(TripService.isRunning)
+        command(controller, TripService.actionIntent(context, TripService.ACTION_RECOVER))
+        near()
+        assertEquals(TripStatus.TRACKING, events.last().status)
+        controller.destroy()
+        assertFalse(TripService.isRunning)
+    }
+
+    @Test
+    fun `resuming a trip clears the restart notice`() {
+        TripStore(context).saveActive(trip)
+        BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
+        val controller = Robolectric.buildService(TripService::class.java).create()
+        command(controller, TripService.actionIntent(context, TripService.ACTION_RECOVER))
+        assertNull(shadowOf(manager).getNotification(TripNotifications.RESTART_ID))
     }
 
     @Test

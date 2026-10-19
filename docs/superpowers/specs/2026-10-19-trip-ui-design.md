@@ -50,8 +50,9 @@ exists.
 - **Start** `startTrip(id, name, lat, lng, radius)`: requires precise location
   and, on Android 13+, notification permission. Background location is not
   needed because the service starts while the app is visible.
-- **Location**: Fused provider. Interval 30 s with balanced priority when more
-  than 2 km away; 5 s with high accuracy within 2 km.
+- **Location**: Fused provider, high accuracy. Interval 30 s when more than
+  2 km away, 5 s within 2 km. (Balanced priority was dropped: it depends on
+  network location, and with that off no fixes arrive.)
 - **Progress**: `startDistance` is the first fix's distance.
   `progress = clamp(1 − distance / startDistance, 0, 1)`. Before the first fix
   the notification reads "Calculating…".
@@ -69,9 +70,11 @@ exists.
 - **State**: `TripStore` (SharedPreferences, committed synchronously) holds the
   active trip so a restarted service or app can recover it, plus the last trip
   for the Home card. `last_used_at` in SQLite is the source for "Last: 4h ago".
-- **Reboot**: trips are not auto-resumed. `BootReceiver` posts "Trip to X
-  stopped by restart. Tap to resume" when the store has an active trip, then
-  clears it.
+- **Interrupted trips** (reboot, app update, force-stop): tracking cannot be
+  restarted from the background. Boot and package-replaced post "Trip to X
+  stopped by restart. Tap to resume" and keep the stored trip; whenever the app
+  opens and finds a stored trip without a running service, it resumes it (or
+  clears it if location permission was revoked).
 - **Events**: an EventChannel `are_we_there/trip` streams
   `{state: idle|tracking|paused|arrived, destinationId, distanceMeters, progress}`.
 

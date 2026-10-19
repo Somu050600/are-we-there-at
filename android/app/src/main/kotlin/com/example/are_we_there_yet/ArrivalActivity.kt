@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.util.TypedValue
@@ -39,6 +40,12 @@ class ArrivalActivity : Activity() {
                     Button(context).apply {
                         text = "Stop alarm"
                         textSize = 20f
+                        isAllCaps = false
+                        setTextColor(Color.parseColor("#1B1D22"))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(36).toFloat()
+                            setColor(Color.parseColor("#B9C3DB"))
+                        }
                         setOnClickListener { stopAlarm(context); finish() }
                     },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(48) },

@@ -134,11 +134,22 @@ class MainActivity : FlutterActivity() {
         result.success(null)
     }
 
-    /** The service's last report, or the stored trip if the app restarted. */
+    /**
+     * The service's last report. A stored trip whose service is gone (force-stop,
+     * update, reboot) is resumed: the app is in the foreground, so Android allows it.
+     */
     private fun currentTrip(): TripSnapshot {
+        val stored = store.active()
+        if (stored != null && !TripService.isRunning) {
+            if (!hasFineLocationPermission()) {
+                store.clearActive()
+                return TripSnapshot.IDLE
+            }
+            ContextCompat.startForegroundService(this, TripService.actionIntent(this, TripService.ACTION_RECOVER))
+            return TripSnapshot(if (stored.paused) TripStatus.PAUSED else TripStatus.TRACKING, stored)
+        }
         val last = TripEvents.last
-        if (last.status != TripStatus.IDLE) return last
-        val stored = store.active() ?: return TripSnapshot.IDLE
+        if (last.status != TripStatus.IDLE || stored == null) return last
         return TripSnapshot(if (stored.paused) TripStatus.PAUSED else TripStatus.TRACKING, stored)
     }
 

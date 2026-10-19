@@ -62,10 +62,23 @@ class TripNotificationsTest {
     @Test
     fun `channels separate silent progress from the alarm`() {
         TripNotifications.ensureChannels(context)
-        assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel(TripNotifications.PROGRESS_CHANNEL).importance)
+        val progress = manager.getNotificationChannel(TripNotifications.PROGRESS_CHANNEL)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, progress.importance)
+        assertNull(progress.sound)
         val alarm = manager.getNotificationChannel(TripNotifications.ARRIVAL_CHANNEL)
         assertEquals(NotificationManager.IMPORTANCE_HIGH, alarm.importance)
         assertNotNull(alarm.sound)
+    }
+
+    @Test
+    fun `each notification has its own group so Android cannot bundle and mute it`() {
+        val all = listOf(
+            TripNotifications.progress(context, trip, 1_000.0, 0.5),
+            TripNotifications.arrival(context, trip, fullScreen = true),
+            TripNotifications.restartNotice(context, trip),
+        )
+        assertEquals(3, all.map { it.group }.toSet().size)
+        all.forEach { assertEquals(Notification.GROUP_ALERT_ALL, it.groupAlertBehavior) }
     }
 
     @Test

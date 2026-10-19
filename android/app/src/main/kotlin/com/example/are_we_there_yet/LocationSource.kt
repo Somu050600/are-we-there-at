@@ -22,12 +22,9 @@ class FusedLocationSource(context: Context) : LocationSource {
     @SuppressLint("MissingPermission") // TripService only starts after the permission check.
     override fun start(intervalMillis: Long, onLocation: (Double, Double) -> Unit) {
         stop()
-        val priority = if (intervalMillis <= TripMath.updateIntervalMillis(0.0)) {
-            Priority.PRIORITY_HIGH_ACCURACY
-        } else {
-            Priority.PRIORITY_BALANCED_POWER_ACCURACY
-        }
-        val request = LocationRequest.Builder(priority, intervalMillis)
+        // Balanced priority depends on network location, which users can turn
+        // off; then no fixes arrive at all. The interval limits battery use.
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMillis)
             .setMinUpdateIntervalMillis(intervalMillis / 2)
             .build()
         val next = object : LocationCallback() {

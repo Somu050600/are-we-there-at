@@ -20,6 +20,7 @@ class TripService : Service() {
         super.onCreate()
         store = TripStore(this)
         source = sourceFactory(this)
+        isRunning = true
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -31,7 +32,8 @@ class TripService : Service() {
                 ACTION_PAUSE -> pause()
                 ACTION_RESUME -> resume()
                 ACTION_STOP -> stop()
-                // Restarted by the system after the process died.
+                // ACTION_RECOVER from the app, or a null intent when the system
+                // restarts the service after the process died.
                 else -> store.active()?.let(::recover) ?: stop()
             }
         } catch (failure: Exception) {
@@ -43,10 +45,12 @@ class TripService : Service() {
 
     override fun onDestroy() {
         source.stop()
+        isRunning = false
         super.onDestroy()
     }
 
     private fun start(trip: Trip) {
+        clearRestartNotice()
         store.saveActive(trip)
         lastDistance = null
         goForeground(trip)
@@ -55,6 +59,7 @@ class TripService : Service() {
     }
 
     private fun recover(trip: Trip) {
+        clearRestartNotice()
         goForeground(trip)
         if (trip.paused) {
             publish(TripStatus.PAUSED, trip)
@@ -110,8 +115,9 @@ class TripService : Service() {
         interval = null
         store.clearActive()
         val fullScreen = store.fullScreenEnabled && TripNotifications.canUseFullScreen(this)
-        notificationManager().notify(TripNotifications.ARRIVAL_ID, TripNotifications.arrival(this, trip, fullScreen))
+        // Remove the progress notification first so the alarm is the only one up.
         stopForeground(STOP_FOREGROUND_REMOVE)
+        notificationManager().notify(TripNotifications.ARRIVAL_ID, TripNotifications.arrival(this, trip, fullScreen))
         stopSelf()
         TripEvents.publish(TripSnapshot(TripStatus.ARRIVED, trip, lastDistance, 1.0))
     }
@@ -145,6 +151,8 @@ class TripService : Service() {
 
     private fun notificationManager() = getSystemService(NotificationManager::class.java)
 
+    private fun clearRestartNotice() = notificationManager().cancel(TripNotifications.RESTART_ID)
+
     private fun Intent.tripArguments(): Map<String, Any?> = mapOf(
         "id" to getStringExtra("id"),
         "name" to getStringExtra("name"),
@@ -159,6 +167,11 @@ class TripService : Service() {
         const val ACTION_PAUSE = "com.example.are_we_there_yet.trip.PAUSE"
         const val ACTION_RESUME = "com.example.are_we_there_yet.trip.RESUME"
         const val ACTION_STOP = "com.example.are_we_there_yet.trip.STOP"
+        const val ACTION_RECOVER = "com.example.are_we_there_yet.trip.RECOVER"
+
+        /** False after a force-stop, update or reboot killed the service. */
+        @Volatile var isRunning = false
+            private set
         val DEFAULT_SOURCE: (Context) -> LocationSource = { FusedLocationSource(it) }
         /** Replaced in tests. */
         @Volatile var sourceFactory: (Context) -> LocationSource = DEFAULT_SOURCE

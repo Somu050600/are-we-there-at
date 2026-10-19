@@ -12,7 +12,8 @@ import android.media.RingtoneManager
 import android.os.Build
 
 object TripNotifications {
-    const val PROGRESS_CHANNEL = "trip_progress_v1"
+    const val PROGRESS_CHANNEL = "trip_progress_v2"
+    private const val OLD_PROGRESS_CHANNEL = "trip_progress_v1"
     const val ARRIVAL_CHANNEL = "arrival_alarm_v2"
     private const val NOTICE_CHANNEL = "trip_notices_v1"
     const val PROGRESS_ID = 1001
@@ -25,9 +26,14 @@ object TripNotifications {
     fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java)
+        manager.deleteNotificationChannel(OLD_PROGRESS_CHANNEL)
+        // Default importance without sound: low importance collapses it under
+        // "Silent", hiding the progress bar and the Pause/Stop actions.
         manager.createNotificationChannel(
-            NotificationChannel(PROGRESS_CHANNEL, "Trip progress", NotificationManager.IMPORTANCE_LOW).apply {
+            NotificationChannel(PROGRESS_CHANNEL, "Trip progress", NotificationManager.IMPORTANCE_DEFAULT).apply {
                 description = "Live distance to your destination"
+                setSound(null, null)
+                enableVibration(false)
                 setShowBadge(false)
             },
         )
@@ -65,6 +71,7 @@ object TripNotifications {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_NAVIGATION)
+            .ownGroup("trip_progress")
             .setContentIntent(openApp(context))
             .addAction(toggle)
             .addAction(action(context, "Stop Tracking", TripService.ACTION_STOP))
@@ -93,6 +100,7 @@ object TripNotifications {
             .setContentTitle("Arrived at ${trip.name}")
             .setContentText("You have reached your destination")
             .setCategory(Notification.CATEGORY_ALARM)
+            .ownGroup("arrival_alarm")
             .setPriority(Notification.PRIORITY_MAX)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
@@ -121,6 +129,7 @@ object TripNotifications {
         return builder(context, NOTICE_CHANNEL)
             .setSmallIcon(R.drawable.ic_trip_arrow)
             .setContentTitle("Trip paused")
+            .ownGroup("trip_notice")
             .setContentText("Trip to ${trip.name} stopped by restart. Tap to resume.")
             .setAutoCancel(true)
             .setContentIntent(openApp(context))
@@ -131,6 +140,14 @@ object TripNotifications {
         context.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()
 
     private const val EXTRA_PROMOTED = "android.requestPromotedOngoing"
+
+    /**
+     * Android auto-groups an app's ungrouped notifications and marks the bundled
+     * ones silent, which muted the arrival alarm. An explicit group per kind
+     * keeps each one alerting on its own.
+     */
+    private fun Notification.Builder.ownGroup(key: String) =
+        setGroup(key).setGroupAlertBehavior(Notification.GROUP_ALERT_ALL)
 
     private fun alarmSound() = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
