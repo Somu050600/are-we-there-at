@@ -4,6 +4,7 @@ import '../models/destination.dart';
 import '../services/error_message.dart';
 import '../services/native_service.dart';
 import '../services/trip_controller.dart';
+import '../util/haptics.dart';
 import '../widgets/destination_icon.dart';
 
 /// Bottom sheet to save a shared place ([shared]) or edit [existing].
@@ -79,8 +80,13 @@ class _DestinationSheetState extends State<DestinationSheet> {
     return _draft.copyWith(name: name.isEmpty ? '' : name);
   }
 
-  Future<void> _submit(Future<void> Function(Destination) action) async {
+  /// [trip] marks actions that start a trip, confirmed with a soft pulse.
+  Future<void> _submit(
+    Future<void> Function(Destination) action, {
+    bool trip = false,
+  }) async {
     if (_busy) return;
+    Haptics.tap();
     setState(() {
       _busy = true;
       _error = null;
@@ -88,8 +94,10 @@ class _DestinationSheetState extends State<DestinationSheet> {
     final navigator = Navigator.of(context);
     try {
       await action(_current());
+      if (trip) Haptics.trip();
       if (mounted) navigator.pop();
     } catch (error) {
+      Haptics.error();
       // Shown inside the sheet: a snackbar would sit behind the modal barrier.
       if (mounted) setState(() => _error = errorMessage(error));
     } finally {
@@ -152,10 +160,14 @@ class _DestinationSheetState extends State<DestinationSheet> {
                               selected: _draft.icon == icon,
                               onTap: _busy
                                   ? null
-                                  : () => setState(
-                                      () =>
-                                          _draft = _draft.copyWith(icon: icon),
-                                    ),
+                                  : () {
+                                      Haptics.tap();
+                                      setState(
+                                        () => _draft = _draft.copyWith(
+                                          icon: icon,
+                                        ),
+                                      );
+                                    },
                             ),
                           ),
                         ],
@@ -182,9 +194,15 @@ class _DestinationSheetState extends State<DestinationSheet> {
                       label: '${_draft.radius.round()} m',
                       onChanged: _busy
                           ? null
-                          : (value) => setState(
-                              () => _draft = _draft.copyWith(radius: value),
-                            ),
+                          : (value) {
+                              // One click per 50 m step, not per frame.
+                              if (value.round() != _draft.radius.round()) {
+                                Haptics.tap();
+                              }
+                              setState(
+                                () => _draft = _draft.copyWith(radius: value),
+                              );
+                            },
                     ),
                   ],
                 ),
@@ -235,7 +253,7 @@ class _DestinationSheetState extends State<DestinationSheet> {
                 FilledButton.icon(
                   onPressed: _busy
                       ? null
-                      : () => _submit(controller.saveAndStart),
+                      : () => _submit(controller.saveAndStart, trip: true),
                   icon: const Icon(Icons.navigation),
                   label: Text(_busy ? 'Starting…' : 'Start'),
                 ),
@@ -267,7 +285,12 @@ class _DestinationSheetState extends State<DestinationSheet> {
   }
 
   Widget _cancelButton() => OutlinedButton(
-    onPressed: _busy ? null : () => Navigator.of(context).pop(),
+    onPressed: _busy
+        ? null
+        : () {
+            Haptics.tap();
+            Navigator.of(context).pop();
+          },
     child: const Text('Cancel'),
   );
 }

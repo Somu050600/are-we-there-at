@@ -35,4 +35,20 @@ void main() {
     expect(settings.enabled, isFalse);
     expect(settings.allowed, isTrue);
   });
+
+  test('parses position, speed, bearing and eta', () {
+    final state = TripState.fromMap({
+      'state': 'tracking',
+      'lat': 12.99,
+      'lng': 77.57,
+      'speedMps': 11.5,
+      'bearingDegrees': 182.0,
+      'etaSeconds': 420.0,
+    });
+    expect(state.lat, 12.99);
+    expect(state.lng, 77.57);
+    expect(state.speedMps, 11.5);
+    expect(state.bearingDegrees, 182.0);
+    expect(state.etaSeconds, 420.0);
+  });
 }

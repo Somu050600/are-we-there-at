@@ -6,8 +6,10 @@ import '../services/trip_controller.dart';
 import '../services/trip_state.dart';
 import '../widgets/destination_tile.dart';
 import '../widgets/full_screen_alarm_card.dart';
+import '../util/haptics.dart';
 import '../widgets/last_trip_card.dart';
 import 'destination_sheet.dart';
+import 'direction_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller, this.now});
@@ -46,10 +48,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _attempt(Future<void> Function() action) async {
+  /// Runs a tapped action; [trip] actions confirm success with a soft pulse.
+  Future<void> _attempt(
+    Future<void> Function() action, {
+    bool trip = false,
+  }) async {
+    Haptics.tap();
     try {
       await action();
+      if (trip) Haptics.trip();
     } catch (error) {
+      Haptics.error();
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -57,11 +66,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _edit(Destination destination) => showDestinationSheet(
-    context,
-    controller: _controller,
-    existing: destination,
-  );
+  void _edit(Destination destination) {
+    Haptics.tap();
+    showDestinationSheet(
+      context,
+      controller: _controller,
+      existing: destination,
+    );
+  }
+
+  void _openDirection(Destination? destination) {
+    Haptics.tap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DirectionScreen(
+          controller: _controller,
+          destination: destination,
+          now: widget.now,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -100,10 +125,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         trip: trip,
                         destination: top,
                         onRestart: () =>
-                            _attempt(() => _controller.start(top!)),
-                        onPause: () => _attempt(_controller.pause),
-                        onResume: () => _attempt(_controller.resume),
-                        onStop: () => _attempt(_controller.stop),
+                            _attempt(() => _controller.start(top!), trip: true),
+                        onPause: () => _attempt(_controller.pause, trip: true),
+                        onResume: () =>
+                            _attempt(_controller.resume, trip: true),
+                        onStop: () => _attempt(_controller.stop, trip: true),
+                        onOpen: () => _openDirection(top),
                       ),
                       const SizedBox(height: 32),
                     ],
@@ -135,10 +162,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           destination: destination,
                           now: now,
                           active: destination.id == activeId,
-                          onTap: () => _edit(destination),
-                          onStart: () =>
-                              _attempt(() => _controller.start(destination)),
-                          onStop: () => _attempt(_controller.stop),
+                          paused: trip.status == TripStatus.paused,
+                          onTap: destination.id == activeId
+                              ? () => _openDirection(destination)
+                              : () => _edit(destination),
+                          onLongPress: () => _edit(destination),
+                          onStart: () => _attempt(
+                            () => _controller.start(destination),
+                            trip: true,
+                          ),
+                          onStop: () => _attempt(_controller.stop, trip: true),
+                          onPause: () =>
+                              _attempt(_controller.pause, trip: true),
+                          onResume: () =>
+                              _attempt(_controller.resume, trip: true),
                         ),
                       ),
                     const SizedBox(height: 24),

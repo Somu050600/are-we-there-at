@@ -23,6 +23,7 @@ void main() {
   Object? startError;
   Completer<void>? startGate;
   late bool fullScreenAllowed;
+  late List<String> haptics;
 
   // Build fixtures inside each test's FakeAsync zone. Futures created in
   // setUp belong to the real zone, so pumping would never complete them.
@@ -47,6 +48,13 @@ void main() {
     startError = null;
     startGate = null;
     fullScreenAllowed = true;
+    haptics = [];
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'HapticFeedback.vibrate') {
+        haptics.add('${call.arguments}');
+      }
+      return null;
+    });
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       switch (call.method) {
@@ -78,7 +86,10 @@ void main() {
         init();
         await body(tester);
       });
-  tearDown(() => messenger.setMockMethodCallHandler(channel, null));
+  tearDown(() {
+    messenger.setMockMethodCallHandler(channel, null);
+    messenger.setMockMethodCallHandler(SystemChannels.platform, null);
+  });
 
   Future<void> mount(WidgetTester tester) async {
     await tester.pumpWidget(MyApp(controller: controller, now: () => now));
@@ -120,7 +131,9 @@ void main() {
   });
 
   Future<void> tap(WidgetTester tester, Finder finder) async {
+    await tester.pumpAndSettle();
     await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
@@ -381,15 +394,17 @@ void main() {
       'distanceMeters': 4230.0,
       'progress': 0.634,
     });
-    expect(find.text('Travelling to'), findsOneWidget);
-    expect(find.text('4.2 km remaining (63%)'), findsOneWidget);
-    expect(find.text('Trip in progress'), findsOneWidget);
+    expect(find.text('Tracking Now'), findsOneWidget);
+    expect(find.text('4.2 km'), findsOneWidget);
+    expect(find.text('63% there'), findsOneWidget);
+    expect(find.text('Tracking now'), findsOneWidget);
     await tap(tester, find.text('Pause'));
     expect(methods().last, 'pauseTrip');
+    expect(haptics, contains('HapticFeedbackType.lightImpact'));
     await trip(tester, {'state': 'paused', 'destinationId': 'one'});
     await tap(tester, find.text('Resume'));
     expect(methods().last, 'resumeTrip');
-    await tap(tester, find.widgetWithText(FilledButton, 'Stop'));
+    await tap(tester, find.text('Stop'));
     expect(methods().last, 'stopTrip');
     await finish(tester);
   });
@@ -426,7 +441,8 @@ void main() {
       'distanceMeters': 900.0,
       'progress': 0.5,
     });
-    await tap(tester, find.text('Home').last);
+    await tester.longPress(find.text('Home').last);
+    await tester.pumpAndSettle();
     await tap(tester, find.byTooltip('Delete destination'));
     expect(methods().last, 'stopTrip');
     expect(await db.getAllDestinations(), isEmpty);
@@ -454,6 +470,75 @@ void main() {
     await mount(tester);
     await tap(tester, find.text('Allow in Settings'));
     expect(methods().last, 'openFullScreenSettings');
+    await finish(tester);
+  });
+
+  appTest('the active row offers pause and stop', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    await trip(tester, {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 900.0,
+      'progress': 0.5,
+    });
+    await tap(tester, find.byTooltip('Pause trip'));
+    expect(methods().last, 'pauseTrip');
+    await tap(tester, find.byTooltip('Stop trip to Home'));
+    expect(methods().last, 'stopTrip');
+    await finish(tester);
+  });
+
+  appTest('tapping the active trip opens the direction screen', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    await trip(tester, {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 4230.0,
+      'progress': 0.6,
+      'bearingDegrees': 45.0,
+      'etaSeconds': 1380.0,
+    });
+    await tap(tester, find.text('Tracking Now'));
+    expect(find.text('16:23'), findsOneWidget);
+    expect(find.text('4.2 km · 23 min'), findsOneWidget);
+    expect(find.byTooltip('Open in Maps'), findsOneWidget);
+    expect(
+      calls.where((c) => c.method == 'setFastUpdates').map((c) => c.arguments),
+      [
+        {'enabled': true},
+      ],
+    );
+    await tap(tester, find.byTooltip('Open in Maps'));
+    expect(calls.last.method, 'openInMaps');
+    expect(calls.last.arguments['name'], 'Home');
+    // The screen has no back button, like Find My: use system back.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(calls.last.arguments, {'enabled': false});
+    await finish(tester);
+  });
+
+  appTest('icon picks, sheet buttons and toggles click softly', (tester) async {
+    share();
+    await mount(tester);
+    await tap(tester, find.bySemanticsLabel('Home'));
+    expect(haptics, ['HapticFeedbackType.selectionClick'], reason: 'icon');
+    await tap(tester, find.text('Start'));
+    expect(haptics.last, 'HapticFeedbackType.lightImpact');
+    haptics.clear();
+    await tap(tester, find.byType(Switch));
+    expect(haptics, ['HapticFeedbackType.selectionClick'], reason: 'switch');
+    await finish(tester);
+  });
+
+  appTest('a failed start gives a firmer haptic', (tester) async {
+    share();
+    startError = PlatformException(code: 'FAILED', message: 'No');
+    await mount(tester);
+    await tap(tester, find.text('Start'));
+    expect(haptics.last, 'HapticFeedbackType.mediumImpact');
     await finish(tester);
   });
 }

@@ -18,6 +18,7 @@ class SharedLocation {
 class NativeService {
   static const _channel = MethodChannel('are_we_there/native');
   static const _trips = EventChannel('are_we_there/trip');
+  static const _headings = EventChannel('are_we_there/heading');
 
   static void onSharedLocation(Future<void> Function()? callback) {
     _channel.setMethodCallHandler(
@@ -117,6 +118,22 @@ class NativeService {
           'enabled': enabled,
         }),
       );
+
+  /// 1 s location updates while the direction screen is visible.
+  static Future<void> setFastUpdates(bool enabled) =>
+      _channel.invokeMethod('setFastUpdates', {'enabled': enabled});
+
+  /// Device heading in degrees clockwise from north; errors with `NO_COMPASS`.
+  static Stream<double> headings() => _headings.receiveBroadcastStream().map(
+    (value) => (value as num).toDouble(),
+  );
+
+  static Future<void> openInMaps(Destination destination) =>
+      _channel.invokeMethod('openInMaps', {
+        'lat': destination.latitude,
+        'lng': destination.longitude,
+        'name': destination.label,
+      });
 
   static Future<void> openFullScreenSettings() =>
       _channel.invokeMethod('openFullScreenSettings');

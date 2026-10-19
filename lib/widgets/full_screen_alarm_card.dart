@@ -46,6 +46,7 @@ class FullScreenAlarmCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                // Home's action wrapper gives the haptic click.
                 Switch(value: settings.enabled, onChanged: onChanged),
               ],
             ),

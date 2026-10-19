@@ -8,6 +8,11 @@ class TripState {
     this.name,
     this.distanceMeters,
     this.progress,
+    this.lat,
+    this.lng,
+    this.speedMps,
+    this.bearingDegrees,
+    this.etaSeconds,
   });
 
   static const idle = TripState(status: TripStatus.idle);
@@ -19,6 +24,15 @@ class TripState {
 
   /// 0..1 share of the starting distance covered; null before the first fix.
   final double? progress;
+
+  /// Last location fix.
+  final double? lat;
+  final double? lng;
+  final double? speedMps;
+
+  /// From the last fix to the destination, clockwise from north.
+  final double? bearingDegrees;
+  final double? etaSeconds;
 
   bool get isActive =>
       status == TripStatus.tracking || status == TripStatus.paused;
@@ -37,6 +51,11 @@ class TripState {
       name: raw['name'] as String?,
       distanceMeters: number(raw['distanceMeters']),
       progress: number(raw['progress'])?.clamp(0, 1).toDouble(),
+      lat: number(raw['lat']),
+      lng: number(raw['lng']),
+      speedMps: number(raw['speedMps']),
+      bearingDegrees: number(raw['bearingDegrees']),
+      etaSeconds: number(raw['etaSeconds']),
     );
   }
 }
