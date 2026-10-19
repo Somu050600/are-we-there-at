@@ -98,7 +98,9 @@ jobs:
           echo "Using $apksigner"
           # Certificates are public; print them so a mismatch is easy to read.
           "$apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/certs.txt"
-          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/certs.txt" | head -1)"
+          # Older apksigner prints "Signer #1 certificate SHA-256 digest:", newer
+          # "V2 Signer: certificate SHA-256 digest:". Every signer must be the key.
+          digest="$(grep -oE 'certificate SHA-256 digest: [0-9a-f]{64}' "$RUNNER_TEMP/certs.txt" | awk '{print $4}' | sort -u | paste -sd, -)"
           if [ "$digest" != "$RELEASE_CERT_SHA256" ]; then
             echo "::error::APK is signed with $digest, expected the release key $RELEASE_CERT_SHA256"
             exit 1
