@@ -94,6 +94,27 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _iconMeta = const VerificationMeta('icon');
+  @override
+  late final GeneratedColumn<String> icon = GeneratedColumn<String>(
+    'icon',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('navigation'),
+  );
+  static const VerificationMeta _lastUsedAtMeta = const VerificationMeta(
+    'lastUsedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastUsedAt = GeneratedColumn<DateTime>(
+    'last_used_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -104,6 +125,8 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
     createdAt,
     isActive,
     sharedLink,
+    icon,
+    lastUsedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -172,6 +195,21 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
         sharedLink.isAcceptableOrUnknown(data['shared_link']!, _sharedLinkMeta),
       );
     }
+    if (data.containsKey('icon')) {
+      context.handle(
+        _iconMeta,
+        icon.isAcceptableOrUnknown(data['icon']!, _iconMeta),
+      );
+    }
+    if (data.containsKey('last_used_at')) {
+      context.handle(
+        _lastUsedAtMeta,
+        lastUsedAt.isAcceptableOrUnknown(
+          data['last_used_at']!,
+          _lastUsedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -213,6 +251,14 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
         DriftSqlType.string,
         data['${effectivePrefix}shared_link'],
       ),
+      icon: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}icon'],
+      )!,
+      lastUsedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_used_at'],
+      ),
     );
   }
 
@@ -231,6 +277,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
   final DateTime createdAt;
   final bool isActive;
   final String? sharedLink;
+  final String icon;
+  final DateTime? lastUsedAt;
   const AlarmEntry({
     required this.id,
     this.name,
@@ -240,6 +288,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     required this.createdAt,
     required this.isActive,
     this.sharedLink,
+    required this.icon,
+    this.lastUsedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -256,6 +306,10 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     if (!nullToAbsent || sharedLink != null) {
       map['shared_link'] = Variable<String>(sharedLink);
     }
+    map['icon'] = Variable<String>(icon);
+    if (!nullToAbsent || lastUsedAt != null) {
+      map['last_used_at'] = Variable<DateTime>(lastUsedAt);
+    }
     return map;
   }
 
@@ -271,6 +325,10 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       sharedLink: sharedLink == null && nullToAbsent
           ? const Value.absent()
           : Value(sharedLink),
+      icon: Value(icon),
+      lastUsedAt: lastUsedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastUsedAt),
     );
   }
 
@@ -288,6 +346,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       sharedLink: serializer.fromJson<String?>(json['sharedLink']),
+      icon: serializer.fromJson<String>(json['icon']),
+      lastUsedAt: serializer.fromJson<DateTime?>(json['lastUsedAt']),
     );
   }
   @override
@@ -302,6 +362,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'isActive': serializer.toJson<bool>(isActive),
       'sharedLink': serializer.toJson<String?>(sharedLink),
+      'icon': serializer.toJson<String>(icon),
+      'lastUsedAt': serializer.toJson<DateTime?>(lastUsedAt),
     };
   }
 
@@ -314,6 +376,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     DateTime? createdAt,
     bool? isActive,
     Value<String?> sharedLink = const Value.absent(),
+    String? icon,
+    Value<DateTime?> lastUsedAt = const Value.absent(),
   }) => AlarmEntry(
     id: id ?? this.id,
     name: name.present ? name.value : this.name,
@@ -323,6 +387,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     createdAt: createdAt ?? this.createdAt,
     isActive: isActive ?? this.isActive,
     sharedLink: sharedLink.present ? sharedLink.value : this.sharedLink,
+    icon: icon ?? this.icon,
+    lastUsedAt: lastUsedAt.present ? lastUsedAt.value : this.lastUsedAt,
   );
   AlarmEntry copyWithCompanion(AlarmsCompanion data) {
     return AlarmEntry(
@@ -336,6 +402,10 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       sharedLink: data.sharedLink.present
           ? data.sharedLink.value
           : this.sharedLink,
+      icon: data.icon.present ? data.icon.value : this.icon,
+      lastUsedAt: data.lastUsedAt.present
+          ? data.lastUsedAt.value
+          : this.lastUsedAt,
     );
   }
 
@@ -349,7 +419,9 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
           ..write('radius: $radius, ')
           ..write('createdAt: $createdAt, ')
           ..write('isActive: $isActive, ')
-          ..write('sharedLink: $sharedLink')
+          ..write('sharedLink: $sharedLink, ')
+          ..write('icon: $icon, ')
+          ..write('lastUsedAt: $lastUsedAt')
           ..write(')'))
         .toString();
   }
@@ -364,6 +436,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     createdAt,
     isActive,
     sharedLink,
+    icon,
+    lastUsedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -376,7 +450,9 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
           other.radius == this.radius &&
           other.createdAt == this.createdAt &&
           other.isActive == this.isActive &&
-          other.sharedLink == this.sharedLink);
+          other.sharedLink == this.sharedLink &&
+          other.icon == this.icon &&
+          other.lastUsedAt == this.lastUsedAt);
 }
 
 class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
@@ -388,6 +464,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
   final Value<DateTime> createdAt;
   final Value<bool> isActive;
   final Value<String?> sharedLink;
+  final Value<String> icon;
+  final Value<DateTime?> lastUsedAt;
   final Value<int> rowid;
   const AlarmsCompanion({
     this.id = const Value.absent(),
@@ -398,6 +476,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     this.createdAt = const Value.absent(),
     this.isActive = const Value.absent(),
     this.sharedLink = const Value.absent(),
+    this.icon = const Value.absent(),
+    this.lastUsedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmsCompanion.insert({
@@ -409,6 +489,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     required DateTime createdAt,
     this.isActive = const Value.absent(),
     this.sharedLink = const Value.absent(),
+    this.icon = const Value.absent(),
+    this.lastUsedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        latitude = Value(latitude),
@@ -424,6 +506,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     Expression<DateTime>? createdAt,
     Expression<bool>? isActive,
     Expression<String>? sharedLink,
+    Expression<String>? icon,
+    Expression<DateTime>? lastUsedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -435,6 +519,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
       if (createdAt != null) 'created_at': createdAt,
       if (isActive != null) 'is_active': isActive,
       if (sharedLink != null) 'shared_link': sharedLink,
+      if (icon != null) 'icon': icon,
+      if (lastUsedAt != null) 'last_used_at': lastUsedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -448,6 +534,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     Value<DateTime>? createdAt,
     Value<bool>? isActive,
     Value<String?>? sharedLink,
+    Value<String>? icon,
+    Value<DateTime?>? lastUsedAt,
     Value<int>? rowid,
   }) {
     return AlarmsCompanion(
@@ -459,6 +547,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
       createdAt: createdAt ?? this.createdAt,
       isActive: isActive ?? this.isActive,
       sharedLink: sharedLink ?? this.sharedLink,
+      icon: icon ?? this.icon,
+      lastUsedAt: lastUsedAt ?? this.lastUsedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -490,6 +580,12 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     if (sharedLink.present) {
       map['shared_link'] = Variable<String>(sharedLink.value);
     }
+    if (icon.present) {
+      map['icon'] = Variable<String>(icon.value);
+    }
+    if (lastUsedAt.present) {
+      map['last_used_at'] = Variable<DateTime>(lastUsedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -507,6 +603,8 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
           ..write('createdAt: $createdAt, ')
           ..write('isActive: $isActive, ')
           ..write('sharedLink: $sharedLink, ')
+          ..write('icon: $icon, ')
+          ..write('lastUsedAt: $lastUsedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -534,6 +632,8 @@ typedef $$AlarmsTableCreateCompanionBuilder =
       required DateTime createdAt,
       Value<bool> isActive,
       Value<String?> sharedLink,
+      Value<String> icon,
+      Value<DateTime?> lastUsedAt,
       Value<int> rowid,
     });
 typedef $$AlarmsTableUpdateCompanionBuilder =
@@ -546,6 +646,8 @@ typedef $$AlarmsTableUpdateCompanionBuilder =
       Value<DateTime> createdAt,
       Value<bool> isActive,
       Value<String?> sharedLink,
+      Value<String> icon,
+      Value<DateTime?> lastUsedAt,
       Value<int> rowid,
     });
 
@@ -595,6 +697,16 @@ class $$AlarmsTableFilterComposer
 
   ColumnFilters<String> get sharedLink => $composableBuilder(
     column: $table.sharedLink,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastUsedAt => $composableBuilder(
+    column: $table.lastUsedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -647,6 +759,16 @@ class $$AlarmsTableOrderingComposer
     column: $table.sharedLink,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get icon => $composableBuilder(
+    column: $table.icon,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastUsedAt => $composableBuilder(
+    column: $table.lastUsedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AlarmsTableAnnotationComposer
@@ -681,6 +803,14 @@ class $$AlarmsTableAnnotationComposer
 
   GeneratedColumn<String> get sharedLink => $composableBuilder(
     column: $table.sharedLink,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get icon =>
+      $composableBuilder(column: $table.icon, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastUsedAt => $composableBuilder(
+    column: $table.lastUsedAt,
     builder: (column) => column,
   );
 }
@@ -724,6 +854,8 @@ class $$AlarmsTableTableManager
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<String?> sharedLink = const Value.absent(),
+                Value<String> icon = const Value.absent(),
+                Value<DateTime?> lastUsedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmsCompanion(
                 id: id,
@@ -734,6 +866,8 @@ class $$AlarmsTableTableManager
                 createdAt: createdAt,
                 isActive: isActive,
                 sharedLink: sharedLink,
+                icon: icon,
+                lastUsedAt: lastUsedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -746,6 +880,8 @@ class $$AlarmsTableTableManager
                 required DateTime createdAt,
                 Value<bool> isActive = const Value.absent(),
                 Value<String?> sharedLink = const Value.absent(),
+                Value<String> icon = const Value.absent(),
+                Value<DateTime?> lastUsedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmsCompanion.insert(
                 id: id,
@@ -756,6 +892,8 @@ class $$AlarmsTableTableManager
                 createdAt: createdAt,
                 isActive: isActive,
                 sharedLink: sharedLink,
+                icon: icon,
+                lastUsedAt: lastUsedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
