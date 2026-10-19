@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'db/alarm_database.dart';
-import 'models/alarm.dart';
-import 'screens/alarm_detail_screen.dart';
-import 'screens/configure_alarm_screen.dart';
+import 'screens/destination_sheet.dart';
 import 'screens/home_screen.dart';
-import 'services/alarm_service.dart';
-import 'services/native_service.dart';
 import 'services/error_message.dart';
+import 'services/native_service.dart';
+import 'services/trip_controller.dart';
+import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,8 +14,9 @@ void main() {
 }
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key, this.service});
-  final AlarmService? service;
+  const MyApp({super.key, this.controller, this.now});
+  final TripController? controller;
+  final DateTime Function()? now;
   @override
   State<MyApp> createState() => _MyAppState();
 }
@@ -24,17 +24,21 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   final _navigator = GlobalKey<NavigatorState>();
   final _messenger = GlobalKey<ScaffoldMessengerState>();
-  late final AlarmService _service;
+  late final TripController _controller;
   bool _readingShare = false;
   bool _readAgain = false;
+
   @override
   void initState() {
     super.initState();
-    _service = widget.service ?? AlarmService(AlarmDatabase.instance);
+    final injected = widget.controller;
+    // An injected controller is initialized by its owner.
+    _controller = injected ?? (TripController(AlarmDatabase.instance)..init());
     NativeService.onSharedLocation(_readShares);
     WidgetsBinding.instance.addPostFrameCallback((_) => _readShares());
   }
 
+  /// Opens one sheet per queued share, in order.
   Future<void> _readShares() async {
     if (_readingShare) {
       _readAgain = true;
@@ -62,18 +66,12 @@ class _MyAppState extends State<MyApp> {
           break;
         }
         if (!mounted) return;
-        if (location != null) {
-          final shared = location;
-          await _navigator.currentState!.push(
-            MaterialPageRoute<void>(
-              builder: (_) => ConfigureAlarmScreen(
-                service: _service,
-                lat: shared.lat,
-                lng: shared.lng,
-                name: shared.name,
-                sharedLink: shared.sharedLink,
-              ),
-            ),
+        final context = _navigator.currentContext;
+        if (location != null && context != null && context.mounted) {
+          await showDestinationSheet(
+            context,
+            controller: _controller,
+            shared: location,
           );
           _readAgain = true;
         }
@@ -86,6 +84,7 @@ class _MyAppState extends State<MyApp> {
   @override
   void dispose() {
     NativeService.onSharedLocation(null);
+    if (widget.controller == null) _controller.dispose();
     super.dispose();
   }
 
@@ -94,19 +93,9 @@ class _MyAppState extends State<MyApp> {
     navigatorKey: _navigator,
     scaffoldMessengerKey: _messenger,
     title: 'Are We There Yet',
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
-    ),
-    home: HomeScreen(service: _service),
-    onGenerateRoute: (settings) {
-      if (settings.name == AlarmDetailScreen.detailRouteName &&
-          settings.arguments is Alarm) {
-        return MaterialPageRoute(
-          builder: (_) => AlarmDetailScreen(alarm: settings.arguments as Alarm),
-        );
-      }
-      return null;
-    },
+    theme: buildTheme(Brightness.light),
+    darkTheme: buildTheme(Brightness.dark),
+    themeMode: ThemeMode.system,
+    home: HomeScreen(controller: _controller, now: widget.now),
   );
 }

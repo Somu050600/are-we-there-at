@@ -73,43 +73,16 @@ class NativeService {
     }
   }
 
-  static Future<String> addGeofence({
-    required String id,
-    required double lat,
-    required double lng,
-    required double radius,
-    String? name,
-  }) async {
-    validate(id: id, lat: lat, lng: lng, radius: radius);
-    final result = await _channel.invokeMethod('addGeofence', {
-      'id': id,
-      'lat': lat,
-      'lng': lng,
-      'radius': radius,
-      'name': name,
-    });
-    return result.toString();
-  }
-
-  static Future<void> removeGeofence(String id) =>
-      _channel.invokeMethod('removeGeofence', {'id': id});
-  static Future<void> syncGeofences(
-    List<Map<String, Object?>> alarms, {
-    List<String> inactiveIds = const [],
-  }) => _channel.invokeMethod('syncGeofences', {
-    'alarms': alarms,
-    'inactiveIds': inactiveIds,
-  });
   static Future<void> openSettings() => _channel.invokeMethod('openSettings');
 
-  static Future<void> startTrip(Destination destination) {
+  static Future<void> startTrip(Destination destination) async {
     validate(
       id: destination.id,
       lat: destination.latitude,
       lng: destination.longitude,
       radius: destination.radius,
     );
-    return _channel.invokeMethod('startTrip', {
+    await _channel.invokeMethod('startTrip', {
       'id': destination.id,
       'name': destination.label,
       'lat': destination.latitude,

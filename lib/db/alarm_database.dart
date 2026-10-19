@@ -5,7 +5,6 @@ import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import '../models/alarm.dart' as model;
 import '../models/destination.dart';
 
 part 'alarm_database.g.dart';
@@ -121,51 +120,6 @@ class AlarmDatabase extends _$AlarmDatabase {
     );
   }
 
-  /// Reactive stream of all alarms, newest first.
-  Stream<List<model.Alarm>> watchAllAlarms() {
-    final query = select(alarms)
-      ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]);
-    return query.watch().map((rows) => rows.map(_toModel).toList());
-  }
-
-  Future<List<model.Alarm>> getAllAlarms() async =>
-      (await select(alarms).get()).map(_toModel).toList();
-
-  Future<model.Alarm?> getAlarm(String id) async {
-    final row = await (select(
-      alarms,
-    )..where((t) => t.id.equals(id))).getSingleOrNull();
-    return row == null ? null : _toModel(row);
-  }
-
-  /// Insert a new alarm.
-  Future<void> insertAlarm(model.Alarm alarm) {
-    return into(alarms).insert(
-      AlarmsCompanion.insert(
-        id: alarm.id,
-        name: Value(alarm.name),
-        latitude: alarm.latitude,
-        longitude: alarm.longitude,
-        radius: alarm.radius,
-        createdAt: alarm.createdAt,
-        isActive: Value(alarm.isActive),
-        sharedLink: Value(alarm.sharedLink),
-      ),
-    );
-  }
-
-  /// Delete an alarm by id.
-  Future<void> deleteAlarm(String id) {
-    return (delete(alarms)..where((t) => t.id.equals(id))).go();
-  }
-
-  /// Toggle active state.
-  Future<void> toggleAlarm(String id, bool active) {
-    return (update(alarms)..where((t) => t.id.equals(id))).write(
-      AlarmsCompanion(isActive: Value(active)),
-    );
-  }
-
   // ── Mapping ──────────────────────────────────────────────────
 
   Destination _toDestination(AlarmEntry row) => Destination(
@@ -178,17 +132,6 @@ class AlarmDatabase extends _$AlarmDatabase {
     sharedLink: row.sharedLink,
     icon: DestinationIcon.fromName(row.icon),
     lastUsedAt: row.lastUsedAt,
-  );
-
-  model.Alarm _toModel(AlarmEntry row) => model.Alarm(
-    id: row.id,
-    name: row.name,
-    latitude: row.latitude,
-    longitude: row.longitude,
-    radius: row.radius,
-    createdAt: row.createdAt,
-    isActive: row.isActive,
-    sharedLink: row.sharedLink,
   );
 }
 

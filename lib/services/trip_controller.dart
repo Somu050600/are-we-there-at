@@ -50,7 +50,11 @@ class TripController {
     } catch (_) {
       // Keep defaults; the toggle still works.
     }
-    unawaited(NativeService.removeLegacyGeofences().catchError((Object _) {}));
+    try {
+      await NativeService.removeLegacyGeofences();
+    } catch (_) {
+      // Retried on the next launch; Android also retries after app updates.
+    }
   }
 
   Future<void> save(Destination destination) => _run(() => _save(destination));

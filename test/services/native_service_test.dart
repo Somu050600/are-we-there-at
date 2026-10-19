@@ -1,6 +1,21 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:are_we_there_yet/models/destination.dart';
 import 'package:are_we_there_yet/services/native_service.dart';
+
+Destination _trip({
+  String id = 'a',
+  double lat = 12,
+  double lng = 77,
+  double radius = 200,
+}) => Destination(
+  id: id,
+  name: 'Place',
+  latitude: lat,
+  longitude: lng,
+  radius: radius,
+  createdAt: DateTime(2026),
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -53,7 +68,7 @@ void main() {
       double.infinity,
     ]) {
       await expectLater(
-        NativeService.addGeofence(id: 'a', lat: 12, lng: 77, radius: radius),
+        NativeService.startTrip(_trip(radius: radius)),
         throwsArgumentError,
       );
     }
@@ -65,12 +80,11 @@ void main() {
       calls.add(call);
       return 'ok';
     });
-    await NativeService.addGeofence(id: 'north', lat: 90, lng: 180, radius: 50);
-    await NativeService.addGeofence(
-      id: 'south',
-      lat: -90,
-      lng: -180,
-      radius: 10000,
+    await NativeService.startTrip(
+      _trip(id: 'north', lat: 90, lng: 180, radius: 50),
+    );
+    await NativeService.startTrip(
+      _trip(id: 'south', lat: -90, lng: -180, radius: 10000),
     );
     expect(calls.map((c) => c.arguments['radius']), [50.0, 10000.0]);
   });
@@ -80,7 +94,7 @@ void main() {
       (_) async => throw PlatformException(code: 'PERMISSION_DENIED'),
     );
     await expectLater(
-      NativeService.addGeofence(id: 'a', lat: 12, lng: 77, radius: 200),
+      NativeService.startTrip(_trip()),
       throwsA(isA<PlatformException>()),
     );
   });
