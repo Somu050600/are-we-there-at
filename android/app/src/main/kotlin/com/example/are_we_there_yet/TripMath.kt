@@ -17,7 +17,7 @@ object TripMath {
     private const val FAR_INTERVAL_MILLIS = 30_000L
     private const val NEAR_INTERVAL_MILLIS = 5_000L
     const val FAST_INTERVAL_MILLIS = 1_000L
-    private const val MIN_ETA_SPEED = 0.7 // m/s, below walking pace
+    const val MIN_ETA_SPEED = 0.7 // m/s, walking pace
     private const val SPEED_SMOOTHING = 0.3
 
     fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {

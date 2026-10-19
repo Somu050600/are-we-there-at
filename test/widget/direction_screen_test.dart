@@ -164,4 +164,26 @@ void main() {
     expect(find.text("You've arrived"), findsOneWidget);
     expect(find.text('Done'), findsOneWidget);
   });
+
+  screenTest('a compass that never reports is treated as unavailable', (
+    tester,
+  ) async {
+    await show(tester, tracking(bearing: 135));
+    expect(
+      find.text('Compass unavailable · arrow points from north'),
+      findsNothing,
+    );
+    await tester.pump(const Duration(seconds: 3));
+    expect(
+      find.text('Compass unavailable · arrow points from north'),
+      findsOneWidget,
+    );
+    headings.add(135);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      find.text('Compass unavailable · arrow points from north'),
+      findsNothing,
+    );
+    expect(turns(tester), closeTo(0, 1e-9));
+  });
 }

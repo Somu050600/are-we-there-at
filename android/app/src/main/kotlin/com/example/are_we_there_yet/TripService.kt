@@ -123,7 +123,9 @@ class TripService : Service() {
         val trip = store.active()?.takeUnless { it.paused } ?: return
         val distance = TripMath.distanceMeters(fix.lat, fix.lng, trip.lat, trip.lng)
         val previous = lastFix
-        val sample = fix.speedMps ?: previous?.let {
+        // Below walking pace a reported speed is unreliable (providers report 0 or
+        // near 0 after jumps), so fall back to the speed between fixes.
+        val sample = fix.speedMps?.takeIf { it >= TripMath.MIN_ETA_SPEED } ?: previous?.let {
             val seconds = (fix.timeMillis - it.timeMillis) / 1000.0
             if (seconds > 0) TripMath.distanceMeters(it.lat, it.lng, fix.lat, fix.lng) / seconds else null
         }

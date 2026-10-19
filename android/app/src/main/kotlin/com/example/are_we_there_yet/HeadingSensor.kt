@@ -37,7 +37,14 @@ class HeadingSensor(context: Context, private val displayRotation: () -> Int) : 
         if (now - lastEmit < MIN_INTERVAL_MILLIS) return
         lastEmit = now
         SensorManager.getRotationMatrixFromVector(rotation, event.values)
-        val (x, y) = axesFor(displayRotation())
+        SensorManager.getOrientation(rotation, orientation)
+        val (x, y) = if (isUpright(orientation[1].toDouble())) {
+            // Held upright, flat-phone azimuth is unstable: use the direction
+            // the back of the phone faces instead.
+            SensorManager.AXIS_X to SensorManager.AXIS_Z
+        } else {
+            axesFor(displayRotation())
+        }
         SensorManager.remapCoordinateSystem(rotation, x, y, remapped)
         SensorManager.getOrientation(remapped, orientation)
         onHeading?.invoke(normalize(Math.toDegrees(orientation[0].toDouble())))
@@ -49,6 +56,9 @@ class HeadingSensor(context: Context, private val displayRotation: () -> Int) : 
         private const val MIN_INTERVAL_MILLIS = 50L // at most 20 updates a second
 
         fun normalize(degrees: Double) = ((degrees % 360) + 360) % 360
+
+        /** Pitch in radians beyond 45°, i.e. the phone is closer to upright than flat. */
+        fun isUpright(pitchRadians: Double) = Math.abs(pitchRadians) > Math.PI / 4
 
         /** Keeps "up" on screen as the reference direction in every orientation. */
         fun axesFor(rotation: Int): Pair<Int, Int> = when (rotation) {

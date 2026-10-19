@@ -201,6 +201,15 @@ class TripServiceTest {
     }
 
     @Test
+    fun `a reported near-zero speed falls back to the speed between fixes`() {
+        started()
+        source.at(12.9955, 77.5710, speed = 0.0)
+        source.at(12.9910, 77.5710, speed = 0.18)
+        assertEquals(50.0, events.last().speed!!, 2.0)
+        assertTrue(events.last().eta != null)
+    }
+
+    @Test
     fun `fast updates while the direction screen is open`() {
         val controller = started()
         source.at(13.10, 77.5710) // far: normally 30 s

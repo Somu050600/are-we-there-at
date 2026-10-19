@@ -18,4 +18,10 @@ class HeadingSensorTest {
         assertEquals(SensorManager.AXIS_X to SensorManager.AXIS_Y, HeadingSensor.axesFor(Surface.ROTATION_0))
         assertEquals(SensorManager.AXIS_Y to SensorManager.AXIS_MINUS_X, HeadingSensor.axesFor(Surface.ROTATION_90))
     }
+
+    @Test
+    fun `upright means pitched more than 45 degrees`() {
+        assertEquals(true, HeadingSensor.isUpright(Math.toRadians(-80.0)))
+        assertEquals(false, HeadingSensor.isUpright(Math.toRadians(-20.0)))
+    }
 }

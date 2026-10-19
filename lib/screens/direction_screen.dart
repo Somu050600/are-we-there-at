@@ -36,6 +36,7 @@ class _DirectionScreenState extends State<DirectionScreen> {
   StreamSubscription<double>? _headingSubscription;
   double? _heading;
   bool _noCompass = false;
+  Timer? _compassTimeout;
   double _turns = 0;
   final _alignment = AlignmentTracker();
 
@@ -46,6 +47,8 @@ class _DirectionScreenState extends State<DirectionScreen> {
     _headingSubscription = (widget.headings ?? NativeService.headings()).listen(
       (heading) {
         _heading = heading;
+        _compassTimeout?.cancel();
+        if (_noCompass) setState(() => _noCompass = false);
         _turn();
       },
       onError: (Object _) {
@@ -53,12 +56,21 @@ class _DirectionScreenState extends State<DirectionScreen> {
       },
     );
     widget.controller.trip.addListener(_turn);
+    // Some sensors register but never report; say so instead of silently
+    // pointing relative to north.
+    _compassTimeout = Timer(const Duration(seconds: 3), () {
+      if (mounted && _heading == null) {
+        setState(() => _noCompass = true);
+        _turn();
+      }
+    });
     _turn();
   }
 
   @override
   void dispose() {
     widget.controller.trip.removeListener(_turn);
+    _compassTimeout?.cancel();
     _headingSubscription?.cancel();
     NativeService.setFastUpdates(false).catchError((Object _) {});
     super.dispose();
