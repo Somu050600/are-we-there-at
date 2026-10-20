@@ -13,6 +13,8 @@ class TripState {
     this.speedMps,
     this.bearingDegrees,
     this.etaSeconds,
+    this.fixTime,
+    this.waitingForSignal = false,
   });
 
   static const idle = TripState(status: TripStatus.idle);
@@ -33,6 +35,12 @@ class TripState {
   /// From the last fix to the destination, clockwise from north.
   final double? bearingDegrees;
   final double? etaSeconds;
+
+  /// When the last fix was taken.
+  final DateTime? fixTime;
+
+  /// Location is unavailable right now (tunnel, no sky view).
+  final bool waitingForSignal;
 
   bool get isActive =>
       status == TripStatus.tracking || status == TripStatus.paused;
@@ -56,6 +64,11 @@ class TripState {
       speedMps: number(raw['speedMps']),
       bearingDegrees: number(raw['bearingDegrees']),
       etaSeconds: number(raw['etaSeconds']),
+      fixTime: switch (number(raw['fixTimeMillis'])) {
+        final millis? => DateTime.fromMillisecondsSinceEpoch(millis.round()),
+        null => null,
+      },
+      waitingForSignal: raw['waitingForSignal'] == true,
     );
   }
 }

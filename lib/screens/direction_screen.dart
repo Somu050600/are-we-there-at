@@ -133,6 +133,8 @@ class _DirectionScreenState extends State<DirectionScreen> {
             final remaining = formatRemaining(trip.etaSeconds);
             final caption = paused
                 ? 'Paused'
+                : trip.waitingForSignal
+                ? 'Waiting for GPS…'
                 : _noCompass
                 ? 'Compass unavailable · arrow points from north'
                 : null;

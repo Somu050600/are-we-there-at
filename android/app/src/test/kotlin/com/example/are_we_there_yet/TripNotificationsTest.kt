@@ -41,6 +41,24 @@ class TripNotificationsTest {
     }
 
     @Test
+    fun `header shows when the last fix was taken`() {
+        val fresh = TripNotifications.progress(context, trip, 4_230.0, 0.6, fixTimeMillis = 1_760_000_000_000)
+        assertEquals(1_760_000_000_000, fresh.`when`)
+        assertTrue(fresh.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+        val first = TripNotifications.progress(context, trip, null, null)
+        assertTrue(!first.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+    }
+
+    @Test
+    fun `no signal says so`() {
+        assertEquals(
+            "Waiting for GPS · 4.2 km at last fix",
+            TripNotifications.progress(context, trip, 4_230.0, 0.6, waiting = true).text(),
+        )
+        assertEquals("Waiting for GPS…", TripNotifications.progress(context, trip, null, null, waiting = true).text())
+    }
+
+    @Test
     fun `paused trip offers resume`() {
         val notification = TripNotifications.progress(context, trip.copy(paused = true), 950.0, 0.81)
         assertEquals("Paused · 950 m remaining", notification.text())

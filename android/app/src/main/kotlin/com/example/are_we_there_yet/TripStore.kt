@@ -26,6 +26,8 @@ data class TripSnapshot(
     /** From the last fix to the destination, clockwise from north. */
     val bearing: Double? = null,
     val eta: Double? = null,
+    /** Location is unavailable right now (tunnel, no sky view). */
+    val waitingForSignal: Boolean = false,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "state" to status.name.lowercase(),
@@ -38,6 +40,8 @@ data class TripSnapshot(
         "speedMps" to speed,
         "bearingDegrees" to bearing,
         "etaSeconds" to eta,
+        "fixTimeMillis" to fix?.timeMillis,
+        "waitingForSignal" to waitingForSignal,
     )
 
     companion object {

@@ -51,12 +51,25 @@ object TripNotifications {
         )
     }
 
-    fun progress(context: Context, trip: Trip, distance: Double?, progress: Double?): Notification {
+    /**
+     * [fixTimeMillis] is shown as the header time ("4m"), which Android keeps
+     * current itself. [waiting] means location is unavailable right now.
+     */
+    fun progress(
+        context: Context,
+        trip: Trip,
+        distance: Double?,
+        progress: Double?,
+        fixTimeMillis: Long? = null,
+        waiting: Boolean = false,
+    ): Notification {
         ensureChannels(context)
         val percent = TripMath.percent(progress)
         val text = when {
             trip.paused && distance != null -> "Paused · ${TripMath.formatDistance(distance)} remaining"
             trip.paused -> "Paused"
+            waiting && distance != null -> "Waiting for GPS · ${TripMath.formatDistance(distance)} at last fix"
+            waiting -> "Waiting for GPS…"
             distance == null -> "Calculating… remaining (0%)"
             else -> "${TripMath.formatDistance(distance)} remaining ($percent%)"
         }
@@ -72,6 +85,8 @@ object TripNotifications {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_NAVIGATION)
+            .setShowWhen(fixTimeMillis != null)
+            .apply { fixTimeMillis?.let(::setWhen) }
             .ownGroup("trip_progress")
             .setContentIntent(openApp(context))
             .addAction(toggle)

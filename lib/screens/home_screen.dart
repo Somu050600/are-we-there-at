@@ -125,6 +125,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     if (trip.isActive || top != null) ...[
                       LastTripCard(
                         trip: trip,
+                        clock: widget.now ?? DateTime.now,
                         destination: top,
                         onRestart: () =>
                             _attempt(() => _controller.start(top!), trip: true),

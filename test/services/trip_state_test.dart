@@ -55,5 +55,17 @@ void main() {
     expect(state.speedMps, 11.5);
     expect(state.bearingDegrees, 182.0);
     expect(state.etaSeconds, 420.0);
+    expect(state.fixTime, isNull);
+    expect(state.waitingForSignal, isFalse);
+  });
+
+  test('parses the last fix time and signal state', () {
+    final state = TripState.fromMap({
+      'state': 'tracking',
+      'fixTimeMillis': 1760000000000,
+      'waitingForSignal': true,
+    });
+    expect(state.fixTime, DateTime.fromMillisecondsSinceEpoch(1760000000000));
+    expect(state.waitingForSignal, isTrue);
   });
 }

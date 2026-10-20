@@ -167,6 +167,20 @@ class TripServiceTest {
     }
 
     @Test
+    fun `losing the GPS signal shows waiting until the next fix`() {
+        started()
+        far()
+        source.unavailable!!.invoke()
+        assertTrue(progressText()!!.startsWith("Waiting for GPS"))
+        assertTrue(events.last().waitingForSignal)
+        assertNull(events.last().eta)
+        near()
+        assertTrue(progressText()!!.endsWith("%)"))
+        assertFalse(events.last().waitingForSignal)
+        assertEquals(events.last().fix!!.timeMillis, events.last().toMap()["fixTimeMillis"])
+    }
+
+    @Test
     fun `pause and stop cancel the fallback alarm`() {
         val controller = started()
         veryFar()

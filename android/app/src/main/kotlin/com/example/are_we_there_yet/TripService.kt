@@ -26,6 +26,8 @@ class TripService : Service() {
     private var speed: Double? = null
     /** Set while the direction screen is open. */
     private var fast = false
+    /** Location was reported unavailable and no fix came since. */
+    private var waitingForSignal = false
     /** Set once low-accuracy updates failed; GPS is used from then on. */
     private var lowPowerFailed = false
     private val batteryWatch = BatteryWatch()
@@ -81,6 +83,7 @@ class TripService : Service() {
         lastDistance = null
         lastFix = null
         speed = null
+        waitingForSignal = false
         goForeground(trip)
         checkBattery()
         track(planFor(trip)) // near rate until the first fix
@@ -123,6 +126,7 @@ class TripService : Service() {
     private fun resume() {
         val trip = store.active() ?: return stop()
         val resumed = trip.copy(paused = false)
+        waitingForSignal = false
         store.saveActive(resumed)
         goForeground(resumed)
         track(planFor(resumed))
@@ -154,6 +158,7 @@ class TripService : Service() {
         if (sample != null) speed = TripMath.smoothSpeed(speed, sample)
         lastFix = fix
         lastDistance = distance
+        waitingForSignal = false
         // A low-accuracy fix can be kilometres off; it switches to GPS (the near
         // plan, since its error reaches the radius) and the next fix decides.
         if (TripMath.isArrived(distance, trip.radius) && plan?.highAccuracy != false) return arrive(trip)
@@ -179,7 +184,7 @@ class TripService : Service() {
     private fun track(next: LocationPlan) {
         plan = next
         watchLowPower(next)
-        source.start(next, ::onLocation) { fallBackToGps("Low-accuracy location unavailable") }
+        source.start(next, ::onLocation, ::onUnavailable)
     }
 
     private fun stopTracking() {
@@ -209,6 +214,16 @@ class TripService : Service() {
                 timeout,
             )
         }
+    }
+
+    /** Low accuracy falls back to GPS; GPS without a signal says so. */
+    private fun onUnavailable() {
+        if (plan?.highAccuracy == false) return fallBackToGps("Low-accuracy location unavailable")
+        val trip = store.active()?.takeUnless { it.paused } ?: return
+        if (plan == null || waitingForSignal) return
+        waitingForSignal = true
+        notifyProgress(trip)
+        publish(TripStatus.TRACKING, trip)
     }
 
     private fun fallBackToGps(reason: String) {
@@ -241,7 +256,7 @@ class TripService : Service() {
     }
 
     private fun goForeground(trip: Trip) {
-        val notification = TripNotifications.progress(this, trip, lastDistance, progressOf(trip))
+        val notification = progressNotification(trip)
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(TripNotifications.PROGRESS_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
         } else {
@@ -249,9 +264,11 @@ class TripService : Service() {
         }
     }
 
-    private fun notifyProgress(trip: Trip) = notificationManager().notify(
-        TripNotifications.PROGRESS_ID,
-        TripNotifications.progress(this, trip, lastDistance, progressOf(trip)),
+    private fun notifyProgress(trip: Trip) =
+        notificationManager().notify(TripNotifications.PROGRESS_ID, progressNotification(trip))
+
+    private fun progressNotification(trip: Trip) = TripNotifications.progress(
+        this, trip, lastDistance, progressOf(trip), lastFix?.timeMillis, waitingForSignal,
     )
 
     private fun progressOf(trip: Trip): Double? {
@@ -272,7 +289,12 @@ class TripService : Service() {
             TripSnapshot(
                 status, trip, distance, progressOf(trip), fix, speed,
                 bearing = fix?.let { TripMath.bearingDegrees(it.lat, it.lng, trip.lat, trip.lng) },
-                eta = if (status == TripStatus.TRACKING && distance != null) TripMath.etaSeconds(distance, speed) else null,
+                eta = if (status == TripStatus.TRACKING && distance != null && !waitingForSignal) {
+                    TripMath.etaSeconds(distance, speed)
+                } else {
+                    null
+                },
+                waitingForSignal = waitingForSignal && status == TripStatus.TRACKING,
             ),
         )
     }

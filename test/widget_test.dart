@@ -431,6 +431,36 @@ void main() {
     await finish(tester);
   });
 
+  appTest('the card says when tracking has gone quiet', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    final tracking = {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 60000.0,
+      'progress': 0.2,
+    };
+    await trip(tester, {
+      ...tracking,
+      'fixTimeMillis': now
+          .subtract(const Duration(minutes: 1))
+          .millisecondsSinceEpoch,
+    });
+    expect(find.textContaining('Updated'), findsNothing);
+
+    await trip(tester, {
+      ...tracking,
+      'fixTimeMillis': now
+          .subtract(const Duration(minutes: 4))
+          .millisecondsSinceEpoch,
+    });
+    expect(find.text('Updated 4 min ago'), findsOneWidget);
+
+    await trip(tester, {...tracking, 'waitingForSignal': true});
+    expect(find.text('Waiting for GPS…'), findsOneWidget);
+    await finish(tester);
+  });
+
   appTest('tapping a destination edits it in the sheet', (tester) async {
     await seed();
     await mount(tester);
