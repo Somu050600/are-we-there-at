@@ -8,6 +8,7 @@ Destination _trip({
   double lat = 12,
   double lng = 77,
   double radius = 200,
+  int? alertMinutes,
 }) => Destination(
   id: id,
   name: 'Place',
@@ -15,6 +16,7 @@ Destination _trip({
   longitude: lng,
   radius: radius,
   createdAt: DateTime(2026),
+  alertMinutes: alertMinutes,
 );
 
 void main() {
@@ -87,6 +89,23 @@ void main() {
       _trip(id: 'south', lat: -90, lng: -180, radius: 10000),
     );
     expect(calls.map((c) => c.arguments['radius']), [50.0, 10000.0]);
+  });
+  test('sends the alert time and rejects impossible ones', () async {
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return null;
+    });
+    await NativeService.startTrip(_trip(alertMinutes: 10));
+    await NativeService.startTrip(_trip());
+    expect(calls.map((c) => c.arguments['alertMinutes']), [10, null]);
+    for (final minutes in [0, 121]) {
+      await expectLater(
+        NativeService.startTrip(_trip(alertMinutes: minutes)),
+        throwsArgumentError,
+      );
+    }
+    expect(calls, hasLength(2));
   });
   test('preserves platform permission failures', () async {
     messenger.setMockMethodCallHandler(

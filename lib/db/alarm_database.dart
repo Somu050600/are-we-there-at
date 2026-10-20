@@ -23,6 +23,7 @@ class Alarms extends Table {
   TextColumn get sharedLink => text().nullable()();
   TextColumn get icon => text().withDefault(const Constant('navigation'))();
   DateTimeColumn get lastUsedAt => dateTime().nullable()();
+  IntColumn get alertMinutes => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -41,7 +42,7 @@ class AlarmDatabase extends _$AlarmDatabase {
   }
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -52,6 +53,9 @@ class AlarmDatabase extends _$AlarmDatabase {
       if (from < 3) {
         await migrator.addColumn(alarms, alarms.icon);
         await migrator.addColumn(alarms, alarms.lastUsedAt);
+      }
+      if (from < 4) {
+        await migrator.addColumn(alarms, alarms.alertMinutes);
       }
     },
   );
@@ -96,6 +100,7 @@ class AlarmDatabase extends _$AlarmDatabase {
         sharedLink: Value(destination.sharedLink),
         icon: Value(destination.icon.name),
         lastUsedAt: Value(destination.lastUsedAt),
+        alertMinutes: Value(destination.alertMinutes),
       ),
     );
   }
@@ -107,6 +112,7 @@ class AlarmDatabase extends _$AlarmDatabase {
         name: Value(destination.name),
         radius: Value(destination.radius),
         icon: Value(destination.icon.name),
+        alertMinutes: Value(destination.alertMinutes),
       ),
     );
   }
@@ -132,6 +138,7 @@ class AlarmDatabase extends _$AlarmDatabase {
     sharedLink: row.sharedLink,
     icon: DestinationIcon.fromName(row.icon),
     lastUsedAt: row.lastUsedAt,
+    alertMinutes: row.alertMinutes,
   );
 }
 

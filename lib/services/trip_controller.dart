@@ -94,6 +94,7 @@ class TripController {
       lat: destination.latitude,
       lng: destination.longitude,
       radius: destination.radius,
+      alertMinutes: destination.alertMinutes,
     );
     if (await database.getDestination(destination.id) == null) {
       await database.insertDestination(destination);

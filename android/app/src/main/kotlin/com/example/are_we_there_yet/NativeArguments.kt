@@ -6,6 +6,7 @@ data class Place(val lat: Double, val lng: Double, val name: String)
 object NativeArguments {
     const val MIN_RADIUS = 50.0
     const val MAX_RADIUS = 10_000.0
+    const val MAX_ALERT_MINUTES = 120
 
     fun trip(arguments: Any?): Trip {
         val values = arguments as? Map<*, *> ?: throw InvalidArgumentsException("Expected trip arguments")
@@ -21,7 +22,13 @@ object NativeArguments {
         ) {
             throw InvalidArgumentsException("Coordinates or radius are outside the supported range")
         }
-        return Trip(id, name, lat, lng, radius, startDistance = null, paused = false)
+        val alertMinutes = when (val value = values["alertMinutes"]) {
+            null -> null
+            is Int, is Long -> (value as Number).toInt().takeIf { it in 1..MAX_ALERT_MINUTES }
+                ?: throw InvalidArgumentsException("Alert time must be 1 to $MAX_ALERT_MINUTES minutes")
+            else -> throw InvalidArgumentsException("Alert time must be whole minutes")
+        }
+        return Trip(id, name, lat, lng, radius, startDistance = null, paused = false, alertMinutes = alertMinutes)
     }
 
     fun place(arguments: Any?): Place {

@@ -48,6 +48,24 @@ the fix's error keeps a rough fix from looking farther away than it may be.
   (`setAndAllowWhileIdle`), not a timer: timers stop while the phone sleeps,
   and with no fixes nothing would wake it. Every fix moves the alarm.
 
+## Time alert
+
+A destination can also ring a set time before arriving: Off, 5, 10, 15 or
+30 minutes (schema v4 column `alert_minutes`, `startTrip` argument
+`alertMinutes`, 1–120). It is in addition to the radius, not instead of it.
+
+- It rings once, on the arrival alarm's channel and id (full screen when
+  allowed, "About 10 min to X"), when the ETA (straight-line distance over
+  smoothed speed) reaches the alert time. Tracking continues and the radius
+  alarm still rings on arrival. `Trip.alerted` is stored so a recovered
+  service does not ring it again.
+- Only a GPS fix rings it; a rough fix that says it is due switches to GPS.
+  Within twice the alert time the plan uses GPS anyway.
+- While it is due, fixes are at most half the alert time apart, and half the
+  time left until it once the ETA is known (but at least 15 s), so it rings
+  at most half its window late. With the ETA unknown (stopped) it can only
+  ring after the trip moves again.
+
 ## Battery optimization
 
 - `getAlarmSettings` adds `batteryUnrestricted`

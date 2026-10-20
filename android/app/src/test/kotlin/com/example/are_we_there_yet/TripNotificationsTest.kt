@@ -59,6 +59,15 @@ class TripNotificationsTest {
     }
 
     @Test
+    fun `time alert rings like the arrival alarm`() {
+        val alert = TripNotifications.timeAlert(context, trip, 10, fullScreen = true)
+        assertEquals("About 10 min to Aurva Bangalore", alert.title())
+        assertEquals(Notification.CATEGORY_ALARM, alert.category)
+        assertTrue(alert.flags and Notification.FLAG_INSISTENT != 0)
+        assertNotNull(alert.fullScreenIntent)
+    }
+
+    @Test
     fun `paused trip offers resume`() {
         val notification = TripNotifications.progress(context, trip.copy(paused = true), 950.0, 0.81)
         assertEquals("Paused · 950 m remaining", notification.text())

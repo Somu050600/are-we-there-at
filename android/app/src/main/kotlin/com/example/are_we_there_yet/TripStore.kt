@@ -12,7 +12,14 @@ data class Trip(
     /** Distance at the first location fix; null until then. */
     val startDistance: Double?,
     val paused: Boolean,
-)
+    /** Also ring this many minutes before arriving; null for radius only. */
+    val alertMinutes: Int? = null,
+    /** The time alert has rung. */
+    val alerted: Boolean = false,
+) {
+    /** The time alert, in seconds, while it is still to ring. */
+    val pendingAlertSeconds: Double? get() = alertMinutes?.takeUnless { alerted }?.let { it * 60.0 }
+}
 
 enum class TripStatus { IDLE, TRACKING, PAUSED, ARRIVED }
 
@@ -64,6 +71,8 @@ class TripStore(context: Context) {
                 radius = json.getDouble("radius"),
                 startDistance = if (json.isNull("startDistance")) null else json.getDouble("startDistance"),
                 paused = json.getBoolean("paused"),
+                alertMinutes = if (json.isNull("alertMinutes")) null else json.getInt("alertMinutes"),
+                alerted = json.optBoolean("alerted", false),
             )
         }.getOrNull()
     }
@@ -74,6 +83,8 @@ class TripStore(context: Context) {
             .put("lat", trip.lat).put("lng", trip.lng).put("radius", trip.radius)
             .put("startDistance", trip.startDistance ?: JSONObject.NULL)
             .put("paused", trip.paused)
+            .put("alertMinutes", trip.alertMinutes ?: JSONObject.NULL)
+            .put("alerted", trip.alerted)
         commit { putString(KEY_ACTIVE, json.toString()) }
     }
 

@@ -235,6 +235,26 @@ void main() {
     await finish(tester);
   });
 
+  appTest('the sheet sets a time alert that Start sends to Android', (
+    tester,
+  ) async {
+    share();
+    await mount(tester);
+    expect(
+      tester
+          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Off'))
+          .selected,
+      isTrue,
+    );
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '10 min'));
+    await tap(tester, find.widgetWithText(ChoiceChip, '10 min'));
+    await tap(tester, find.text('Start'));
+    expect((await db.getAllDestinations()).single.alertMinutes, 10);
+    final start = calls.lastWhere((c) => c.method == 'startTrip');
+    expect(start.arguments['alertMinutes'], 10);
+    await finish(tester);
+  });
+
   appTest('a warm share opens the sheet without a restart', (tester) async {
     await mount(tester);
     share();

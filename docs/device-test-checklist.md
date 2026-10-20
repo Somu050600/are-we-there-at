@@ -30,6 +30,9 @@ distance at which the alarm rang.
   first, then more often from 10 km; note battery use per hour. Repeat with
   Wi-Fi scanning and network location off: updates must continue (GPS
   fallback after about 2–6 minutes).
+- Time alert of 10 minutes on a 20+ minute ride: "About 10 min to X" rings
+  once with roughly 10 minutes left (note how many), tracking continues and
+  the arrival alarm still rings at the radius.
 - With battery optimization on, Home shows the battery card; **Allow** opens
   the system dialog and the card disappears after accepting. On Xiaomi, Oppo,
   Vivo and Samsung also set the app's own battery or autostart setting.

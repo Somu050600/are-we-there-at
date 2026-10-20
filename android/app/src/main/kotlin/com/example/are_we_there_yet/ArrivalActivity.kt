@@ -28,13 +28,14 @@ class ArrivalActivity : Activity() {
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         }
         val name = intent.getStringExtra(TripNotifications.EXTRA_NAME) ?: "your destination"
+        val headline = intent.getStringExtra(TripNotifications.EXTRA_HEADLINE) ?: "Arrived"
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setBackgroundColor(Color.parseColor("#1B1D22"))
                 setPadding(dp(32), dp(32), dp(32), dp(32))
-                addView(label("Arrived", 20f, "#B9C3DB"))
+                addView(label(headline, 20f, "#B9C3DB"))
                 addView(label(name, 34f, "#FFFFFF"))
                 addView(
                     Button(context).apply {

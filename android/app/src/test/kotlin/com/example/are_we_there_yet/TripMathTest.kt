@@ -67,6 +67,28 @@ class TripMathTest {
     }
 
     @Test
+    fun `a pending time alert keeps fixes close enough and uses GPS near it`() {
+        val far = TripMath.locationPlan(60_000.0, alertSeconds = 600.0)
+        assertEquals(300_000L, far.intervalMillis)
+        assertFalse(far.highAccuracy)
+        val soon = TripMath.locationPlan(60_000.0, speedMps = 20.0, maxSpeedMps = 20.0, alertSeconds = 600.0, etaSeconds = 700.0)
+        assertEquals(50_000L, soon.intervalMillis)
+        assertTrue(soon.highAccuracy)
+        val due = TripMath.locationPlan(60_000.0, alertSeconds = 600.0, etaSeconds = 500.0)
+        assertEquals(15_000L, due.intervalMillis)
+        // Never slower than without the alert.
+        assertEquals(5_000L, TripMath.locationPlan(100.0, alertSeconds = 600.0, etaSeconds = 500.0).intervalMillis)
+    }
+
+    @Test
+    fun `the time alert is due once the eta reaches it`() {
+        assertTrue(TripMath.isAlertDue(600.0, 600.0))
+        assertFalse(TripMath.isAlertDue(600.0, 601.0))
+        assertFalse(TripMath.isAlertDue(600.0, null))
+        assertFalse(TripMath.isAlertDue(null, 10.0))
+    }
+
+    @Test
     fun `covering a distance accelerates up to the top speed`() {
         assertEquals(10.0, TripMath.secondsToCover(100.0, 0.0, 25.0), 1e-9) // a t² / 2
         assertEquals(12.5 + (1_000 - 156.25) / 25, TripMath.secondsToCover(1_000.0, 0.0, 25.0), 1e-9)

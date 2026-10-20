@@ -145,6 +145,45 @@ class TripServiceTest {
         assertTrue(stopped <= TripMath.MAX_INTERVAL_MILLIS)
     }
 
+    private fun alarmTitle() = shadowOf(manager).getNotification(TripNotifications.ARRIVAL_ID)
+        ?.extras?.getString(Notification.EXTRA_TITLE)
+
+    private fun startedWithAlert(): ServiceController<TripService> {
+        val controller = Robolectric.buildService(TripService::class.java).create()
+        command(controller, TripService.startIntent(context, trip.copy(alertMinutes = 10)))
+        return controller
+    }
+
+    @Test
+    fun `the time alert rings once and tracking goes on to arrival`() {
+        startedWithAlert()
+        assertEquals(10, TripStore(context).active()!!.alertMinutes)
+        source.at(13.10, 77.5710, speed = 20.0) // ~13.5 km: about 11 min
+        assertNull(alarmTitle())
+        assertTrue(source.plan!!.highAccuracy)
+        source.at(13.08, 77.5710, speed = 20.0) // ~11.3 km: about 9 min
+        assertEquals("About 10 min to Station", alarmTitle())
+        assertTrue(TripStore(context).active()!!.alerted)
+        assertEquals(TripStatus.TRACKING, events.last().status)
+
+        manager.cancel(TripNotifications.ARRIVAL_ID)
+        source.at(13.0, 77.5710, speed = 20.0)
+        assertNull(alarmTitle())
+        source.at(12.9785, 77.5711)
+        assertEquals("Arrived at Station", alarmTitle())
+    }
+
+    @Test
+    fun `a rough fix does not ring the time alert but switches to GPS`() {
+        startedWithAlert()
+        source.at(14.0, 77.5710) // ~114 km, speed unknown
+        assertFalse(source.plan!!.highAccuracy)
+        source.at(13.9, 77.5710, speed = 200.0) // a jump: eta under 10 min
+        assertNull(alarmTitle())
+        assertFalse(TripStore(context).active()!!.alerted)
+        assertTrue(source.plan!!.highAccuracy)
+    }
+
     @Test
     fun `quiet low-accuracy updates fall back to GPS for the rest of the trip`() {
         val controller = started()

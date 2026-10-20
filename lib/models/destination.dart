@@ -10,6 +10,9 @@ enum DestinationIcon {
       .firstWhere((icon) => icon.name == value, orElse: () => navigation);
 }
 
+/// Choices for the time alert, in minutes.
+const alertMinuteChoices = [5, 10, 15, 30];
+
 /// A saved place a trip can be started to.
 class Destination {
   final String id;
@@ -22,6 +25,9 @@ class Destination {
   final DestinationIcon icon;
   final DateTime? lastUsedAt;
 
+  /// Also ring this many minutes before arriving; null for the radius only.
+  final int? alertMinutes;
+
   const Destination({
     required this.id,
     this.name,
@@ -32,6 +38,7 @@ class Destination {
     this.sharedLink,
     this.icon = DestinationIcon.navigation,
     this.lastUsedAt,
+    this.alertMinutes,
   });
 
   String get coordinates =>
@@ -50,6 +57,7 @@ class Destination {
     double? radius,
     DestinationIcon? icon,
     DateTime? lastUsedAt,
+    int? Function()? alertMinutes,
   }) {
     return Destination(
       id: id,
@@ -61,6 +69,7 @@ class Destination {
       sharedLink: sharedLink,
       icon: icon ?? this.icon,
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      alertMinutes: alertMinutes == null ? this.alertMinutes : alertMinutes(),
     );
   }
 }

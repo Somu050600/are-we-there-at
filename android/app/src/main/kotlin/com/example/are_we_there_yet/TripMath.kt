@@ -48,6 +48,8 @@ object TripMath {
     private const val UNKNOWN_TOP_SPEED = 50.0 // 180 km/h
     /** Share of the distance left that may be covered between two fixes. */
     private const val SAFETY = 0.5
+    /** Closest spacing while a time alert is due, so it is not missed by much. */
+    private const val ALERT_MIN_INTERVAL_MILLIS = 15_000L
 
     /**
      * [edgeMeters] is the distance left to the arrival radius, or null before the
@@ -58,6 +60,11 @@ object TripMath {
      * from [speedMps] up to [topSpeed] of [maxSpeedMps], but never shorter than
      * the tier's and never over [MAX_INTERVAL_MILLIS]. The halving leaves room
      * for going twice as fast as assumed, such as boarding a train after a bus.
+     *
+     * While a time alert of [alertSeconds] is still to ring, fixes are at most
+     * half the alert apart, and half the time left until it once [etaSeconds]
+     * is known, so it rings at most half its window late. Within twice the
+     * alert, GPS gives the speed estimate it relies on.
      */
     fun locationPlan(
         edgeMeters: Double?,
@@ -65,15 +72,28 @@ object TripMath {
         lowPowerAllowed: Boolean = true,
         speedMps: Double? = null,
         maxSpeedMps: Double? = null,
+        alertSeconds: Double? = null,
+        etaSeconds: Double? = null,
     ): LocationPlan {
         if (fast) return FAST_PLAN
         if (edgeMeters == null) return NEAR_PLAN
         val tier = TIERS.firstOrNull { (limit, _) -> edgeMeters <= limit }?.second ?: FARTHEST_PLAN
         val top = topSpeed(maxSpeedMps)
         val safeMillis = (secondsToCover(edgeMeters * SAFETY, speedMps ?: top, top) * 1_000).toLong()
-        val interval = maxOf(tier.intervalMillis, minOf(safeMillis, MAX_INTERVAL_MILLIS))
-        return LocationPlan(interval, highAccuracy = tier.highAccuracy || !lowPowerAllowed)
+        var interval = maxOf(tier.intervalMillis, minOf(safeMillis, MAX_INTERVAL_MILLIS))
+        var highAccuracy = tier.highAccuracy || !lowPowerAllowed
+        if (alertSeconds != null) {
+            val untilAlert = etaSeconds?.let { (it - alertSeconds).coerceAtLeast(0.0) }
+            val capMillis = (minOf(alertSeconds, untilAlert ?: alertSeconds) / 2 * 1_000).toLong()
+            interval = minOf(interval, maxOf(capMillis, ALERT_MIN_INTERVAL_MILLIS))
+            if (etaSeconds != null && etaSeconds <= 2 * alertSeconds) highAccuracy = true
+        }
+        return LocationPlan(interval, highAccuracy)
     }
+
+    /** Whether the time alert should ring now. */
+    fun isAlertDue(alertSeconds: Double?, etaSeconds: Double?) =
+        alertSeconds != null && etaSeconds != null && etaSeconds <= alertSeconds
 
     /** Fastest plausible speed: half again the fastest seen, or 180 km/h before any. */
     fun topSpeed(maxSpeedMps: Double?): Double =

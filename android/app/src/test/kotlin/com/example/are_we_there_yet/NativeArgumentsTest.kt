@@ -40,6 +40,19 @@ class NativeArgumentsTest {
     }
 
     @Test
+    fun `the time alert is optional whole minutes up to two hours`() {
+        assertNull(NativeArguments.trip(args()).alertMinutes)
+        assertNull(NativeArguments.trip(args("alertMinutes" to null)).alertMinutes)
+        assertEquals(10, NativeArguments.trip(args("alertMinutes" to 10)).alertMinutes)
+        assertEquals(120, NativeArguments.trip(args("alertMinutes" to 120L)).alertMinutes)
+        listOf(0, 121, "10", 10.5).forEach { minutes ->
+            assertThrows(InvalidArgumentsException::class.java) {
+                NativeArguments.trip(args("alertMinutes" to minutes))
+            }
+        }
+    }
+
+    @Test
     fun `enabled flag must be a boolean`() {
         assertEquals(true, NativeArguments.enabled(mapOf("enabled" to true)))
         assertThrows(InvalidArgumentsException::class.java) { NativeArguments.enabled(mapOf("enabled" to "yes")) }

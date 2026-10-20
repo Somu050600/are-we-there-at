@@ -215,6 +215,38 @@ class _DestinationSheetState extends State<DestinationSheet> {
                               );
                             },
                     ),
+                    Text(
+                      'Also ring before arriving',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final minutes in [null, ...alertMinuteChoices])
+                          ChoiceChip(
+                            visualDensity: VisualDensity.compact,
+                            tooltip: minutes == null
+                                ? null
+                                : 'Ring when about $minutes min are left',
+                            label: Text(
+                              minutes == null ? 'Off' : '$minutes min',
+                            ),
+                            selected: _draft.alertMinutes == minutes,
+                            onSelected: _busy
+                                ? null
+                                : (_) {
+                                    Haptics.tap();
+                                    setState(
+                                      () => _draft = _draft.copyWith(
+                                        alertMinutes: () => minutes,
+                                      ),
+                                    );
+                                  },
+                          ),
+                      ],
+                    ),
                   ],
                 ),
               ),

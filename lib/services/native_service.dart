@@ -64,6 +64,7 @@ class NativeService {
     required double lat,
     required double lng,
     required double radius,
+    int? alertMinutes,
   }) {
     if (id.trim().isEmpty ||
         id.length > 100 ||
@@ -78,6 +79,9 @@ class NativeService {
         'Choose valid coordinates and a radius between 50 m and 10 km.',
       );
     }
+    if (alertMinutes != null && (alertMinutes < 1 || alertMinutes > 120)) {
+      throw ArgumentError('Choose an alert between 1 and 120 minutes.');
+    }
   }
 
   static Future<void> openSettings() => _channel.invokeMethod('openSettings');
@@ -88,6 +92,7 @@ class NativeService {
       lat: destination.latitude,
       lng: destination.longitude,
       radius: destination.radius,
+      alertMinutes: destination.alertMinutes,
     );
     await _channel.invokeMethod('startTrip', {
       'id': destination.id,
@@ -95,6 +100,7 @@ class NativeService {
       'lat': destination.latitude,
       'lng': destination.longitude,
       'radius': destination.radius,
+      'alertMinutes': destination.alertMinutes,
     });
   }
 

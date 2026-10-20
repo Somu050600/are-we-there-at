@@ -115,6 +115,17 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _alertMinutesMeta = const VerificationMeta(
+    'alertMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> alertMinutes = GeneratedColumn<int>(
+    'alert_minutes',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -127,6 +138,7 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
     sharedLink,
     icon,
     lastUsedAt,
+    alertMinutes,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -210,6 +222,15 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
         ),
       );
     }
+    if (data.containsKey('alert_minutes')) {
+      context.handle(
+        _alertMinutesMeta,
+        alertMinutes.isAcceptableOrUnknown(
+          data['alert_minutes']!,
+          _alertMinutesMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -259,6 +280,10 @@ class $AlarmsTable extends Alarms with TableInfo<$AlarmsTable, AlarmEntry> {
         DriftSqlType.dateTime,
         data['${effectivePrefix}last_used_at'],
       ),
+      alertMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}alert_minutes'],
+      ),
     );
   }
 
@@ -279,6 +304,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
   final String? sharedLink;
   final String icon;
   final DateTime? lastUsedAt;
+  final int? alertMinutes;
   const AlarmEntry({
     required this.id,
     this.name,
@@ -290,6 +316,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     this.sharedLink,
     required this.icon,
     this.lastUsedAt,
+    this.alertMinutes,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -310,6 +337,9 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     if (!nullToAbsent || lastUsedAt != null) {
       map['last_used_at'] = Variable<DateTime>(lastUsedAt);
     }
+    if (!nullToAbsent || alertMinutes != null) {
+      map['alert_minutes'] = Variable<int>(alertMinutes);
+    }
     return map;
   }
 
@@ -329,6 +359,9 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       lastUsedAt: lastUsedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(lastUsedAt),
+      alertMinutes: alertMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(alertMinutes),
     );
   }
 
@@ -348,6 +381,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       sharedLink: serializer.fromJson<String?>(json['sharedLink']),
       icon: serializer.fromJson<String>(json['icon']),
       lastUsedAt: serializer.fromJson<DateTime?>(json['lastUsedAt']),
+      alertMinutes: serializer.fromJson<int?>(json['alertMinutes']),
     );
   }
   @override
@@ -364,6 +398,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       'sharedLink': serializer.toJson<String?>(sharedLink),
       'icon': serializer.toJson<String>(icon),
       'lastUsedAt': serializer.toJson<DateTime?>(lastUsedAt),
+      'alertMinutes': serializer.toJson<int?>(alertMinutes),
     };
   }
 
@@ -378,6 +413,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     Value<String?> sharedLink = const Value.absent(),
     String? icon,
     Value<DateTime?> lastUsedAt = const Value.absent(),
+    Value<int?> alertMinutes = const Value.absent(),
   }) => AlarmEntry(
     id: id ?? this.id,
     name: name.present ? name.value : this.name,
@@ -389,6 +425,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     sharedLink: sharedLink.present ? sharedLink.value : this.sharedLink,
     icon: icon ?? this.icon,
     lastUsedAt: lastUsedAt.present ? lastUsedAt.value : this.lastUsedAt,
+    alertMinutes: alertMinutes.present ? alertMinutes.value : this.alertMinutes,
   );
   AlarmEntry copyWithCompanion(AlarmsCompanion data) {
     return AlarmEntry(
@@ -406,6 +443,9 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
       lastUsedAt: data.lastUsedAt.present
           ? data.lastUsedAt.value
           : this.lastUsedAt,
+      alertMinutes: data.alertMinutes.present
+          ? data.alertMinutes.value
+          : this.alertMinutes,
     );
   }
 
@@ -421,7 +461,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
           ..write('isActive: $isActive, ')
           ..write('sharedLink: $sharedLink, ')
           ..write('icon: $icon, ')
-          ..write('lastUsedAt: $lastUsedAt')
+          ..write('lastUsedAt: $lastUsedAt, ')
+          ..write('alertMinutes: $alertMinutes')
           ..write(')'))
         .toString();
   }
@@ -438,6 +479,7 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
     sharedLink,
     icon,
     lastUsedAt,
+    alertMinutes,
   );
   @override
   bool operator ==(Object other) =>
@@ -452,7 +494,8 @@ class AlarmEntry extends DataClass implements Insertable<AlarmEntry> {
           other.isActive == this.isActive &&
           other.sharedLink == this.sharedLink &&
           other.icon == this.icon &&
-          other.lastUsedAt == this.lastUsedAt);
+          other.lastUsedAt == this.lastUsedAt &&
+          other.alertMinutes == this.alertMinutes);
 }
 
 class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
@@ -466,6 +509,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
   final Value<String?> sharedLink;
   final Value<String> icon;
   final Value<DateTime?> lastUsedAt;
+  final Value<int?> alertMinutes;
   final Value<int> rowid;
   const AlarmsCompanion({
     this.id = const Value.absent(),
@@ -478,6 +522,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     this.sharedLink = const Value.absent(),
     this.icon = const Value.absent(),
     this.lastUsedAt = const Value.absent(),
+    this.alertMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   AlarmsCompanion.insert({
@@ -491,6 +536,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     this.sharedLink = const Value.absent(),
     this.icon = const Value.absent(),
     this.lastUsedAt = const Value.absent(),
+    this.alertMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        latitude = Value(latitude),
@@ -508,6 +554,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     Expression<String>? sharedLink,
     Expression<String>? icon,
     Expression<DateTime>? lastUsedAt,
+    Expression<int>? alertMinutes,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -521,6 +568,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
       if (sharedLink != null) 'shared_link': sharedLink,
       if (icon != null) 'icon': icon,
       if (lastUsedAt != null) 'last_used_at': lastUsedAt,
+      if (alertMinutes != null) 'alert_minutes': alertMinutes,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -536,6 +584,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     Value<String?>? sharedLink,
     Value<String>? icon,
     Value<DateTime?>? lastUsedAt,
+    Value<int?>? alertMinutes,
     Value<int>? rowid,
   }) {
     return AlarmsCompanion(
@@ -549,6 +598,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
       sharedLink: sharedLink ?? this.sharedLink,
       icon: icon ?? this.icon,
       lastUsedAt: lastUsedAt ?? this.lastUsedAt,
+      alertMinutes: alertMinutes ?? this.alertMinutes,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -586,6 +636,9 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
     if (lastUsedAt.present) {
       map['last_used_at'] = Variable<DateTime>(lastUsedAt.value);
     }
+    if (alertMinutes.present) {
+      map['alert_minutes'] = Variable<int>(alertMinutes.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -605,6 +658,7 @@ class AlarmsCompanion extends UpdateCompanion<AlarmEntry> {
           ..write('sharedLink: $sharedLink, ')
           ..write('icon: $icon, ')
           ..write('lastUsedAt: $lastUsedAt, ')
+          ..write('alertMinutes: $alertMinutes, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -634,6 +688,7 @@ typedef $$AlarmsTableCreateCompanionBuilder =
       Value<String?> sharedLink,
       Value<String> icon,
       Value<DateTime?> lastUsedAt,
+      Value<int?> alertMinutes,
       Value<int> rowid,
     });
 typedef $$AlarmsTableUpdateCompanionBuilder =
@@ -648,6 +703,7 @@ typedef $$AlarmsTableUpdateCompanionBuilder =
       Value<String?> sharedLink,
       Value<String> icon,
       Value<DateTime?> lastUsedAt,
+      Value<int?> alertMinutes,
       Value<int> rowid,
     });
 
@@ -707,6 +763,11 @@ class $$AlarmsTableFilterComposer
 
   ColumnFilters<DateTime> get lastUsedAt => $composableBuilder(
     column: $table.lastUsedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get alertMinutes => $composableBuilder(
+    column: $table.alertMinutes,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -769,6 +830,11 @@ class $$AlarmsTableOrderingComposer
     column: $table.lastUsedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get alertMinutes => $composableBuilder(
+    column: $table.alertMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AlarmsTableAnnotationComposer
@@ -811,6 +877,11 @@ class $$AlarmsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get lastUsedAt => $composableBuilder(
     column: $table.lastUsedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get alertMinutes => $composableBuilder(
+    column: $table.alertMinutes,
     builder: (column) => column,
   );
 }
@@ -856,6 +927,7 @@ class $$AlarmsTableTableManager
                 Value<String?> sharedLink = const Value.absent(),
                 Value<String> icon = const Value.absent(),
                 Value<DateTime?> lastUsedAt = const Value.absent(),
+                Value<int?> alertMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmsCompanion(
                 id: id,
@@ -868,6 +940,7 @@ class $$AlarmsTableTableManager
                 sharedLink: sharedLink,
                 icon: icon,
                 lastUsedAt: lastUsedAt,
+                alertMinutes: alertMinutes,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -882,6 +955,7 @@ class $$AlarmsTableTableManager
                 Value<String?> sharedLink = const Value.absent(),
                 Value<String> icon = const Value.absent(),
                 Value<DateTime?> lastUsedAt = const Value.absent(),
+                Value<int?> alertMinutes = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => AlarmsCompanion.insert(
                 id: id,
@@ -894,6 +968,7 @@ class $$AlarmsTableTableManager
                 sharedLink: sharedLink,
                 icon: icon,
                 lastUsedAt: lastUsedAt,
+                alertMinutes: alertMinutes,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

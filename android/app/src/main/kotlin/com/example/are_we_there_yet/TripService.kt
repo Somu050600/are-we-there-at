@@ -169,8 +169,14 @@ class TripService : Service() {
         waitingForSignal = false
         // A low-accuracy fix can be kilometres off; it switches to GPS (the near
         // plan, since its error reaches the radius) and the next fix decides.
-        if (TripMath.isArrived(distance, trip.radius) && plan?.highAccuracy != false) return arrive(trip)
-        val current = if (trip.startDistance == null) trip.copy(startDistance = distance).also(store::saveActive) else trip
+        val gps = plan?.highAccuracy != false
+        if (TripMath.isArrived(distance, trip.radius) && gps) return arrive(trip)
+        var current = if (trip.startDistance == null) trip.copy(startDistance = distance).also(store::saveActive) else trip
+        // Like arrival, only a GPS fix rings it; a rough one switches to GPS first.
+        if (gps && TripMath.isAlertDue(current.pendingAlertSeconds, TripMath.etaSeconds(distance, speed))) {
+            current = current.copy(alerted = true).also(store::saveActive)
+            ringTimeAlert(current)
+        }
         notifyProgress(current)
         publish(TripStatus.TRACKING, current)
         val next = planFor(current)
@@ -187,6 +193,15 @@ class TripService : Service() {
         notificationManager().notify(TripNotifications.ARRIVAL_ID, TripNotifications.arrival(this, trip, fullScreen))
         stopSelf()
         TripEvents.publish(TripSnapshot(TripStatus.ARRIVED, trip, lastDistance, 1.0, lastFix, speed, null, 0.0))
+    }
+
+    private fun ringTimeAlert(trip: Trip) {
+        val minutes = trip.alertMinutes ?: return
+        val fullScreen = store.fullScreenEnabled && TripNotifications.canUseFullScreen(this)
+        notificationManager().notify(
+            TripNotifications.ARRIVAL_ID,
+            TripNotifications.timeAlert(this, trip, minutes, fullScreen),
+        )
     }
 
     private fun track(next: LocationPlan) {
@@ -290,6 +305,8 @@ class TripService : Service() {
         lowPowerAllowed = !lowPowerFailed,
         speedMps = speed,
         maxSpeedMps = maxSpeed,
+        alertSeconds = trip.pendingAlertSeconds,
+        etaSeconds = lastDistance?.let { TripMath.etaSeconds(it, speed) },
     )
 
     private fun publish(status: TripStatus, trip: Trip) {
@@ -319,6 +336,7 @@ class TripService : Service() {
         "lat" to getDoubleExtra("lat", Double.NaN),
         "lng" to getDoubleExtra("lng", Double.NaN),
         "radius" to getDoubleExtra("radius", Double.NaN),
+        "alertMinutes" to if (hasExtra("alertMinutes")) getIntExtra("alertMinutes", 0) else null,
     )
 
     companion object {
@@ -343,6 +361,7 @@ class TripService : Service() {
         fun startIntent(context: Context, trip: Trip): Intent = actionIntent(context, ACTION_START)
             .putExtra("id", trip.id).putExtra("name", trip.name)
             .putExtra("lat", trip.lat).putExtra("lng", trip.lng).putExtra("radius", trip.radius)
+            .apply { trip.alertMinutes?.let { putExtra("alertMinutes", it) } }
 
         fun fastIntent(context: Context, enabled: Boolean): Intent =
             actionIntent(context, ACTION_FAST).putExtra(EXTRA_ENABLED, enabled)

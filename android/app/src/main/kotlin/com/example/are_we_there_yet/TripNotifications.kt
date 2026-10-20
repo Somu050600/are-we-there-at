@@ -21,6 +21,7 @@ object TripNotifications {
     const val RESTART_ID = 1003
     const val BATTERY_ID = 1004
     const val EXTRA_NAME = "destination_name"
+    const val EXTRA_HEADLINE = "headline"
     private const val ALARM_TIMEOUT_MILLIS = 5 * 60 * 1000L
     private val VIBRATION = longArrayOf(0, 600, 400, 600)
 
@@ -105,7 +106,29 @@ object TripNotifications {
         return builder.build()
     }
 
-    fun arrival(context: Context, trip: Trip, fullScreen: Boolean): Notification {
+    fun arrival(context: Context, trip: Trip, fullScreen: Boolean): Notification = alarm(
+        context, trip, fullScreen,
+        title = "Arrived at ${trip.name}",
+        text = "You have reached your destination",
+        headline = "Arrived",
+    )
+
+    /** Rings like the arrival alarm; tracking goes on until the radius. */
+    fun timeAlert(context: Context, trip: Trip, minutes: Int, fullScreen: Boolean): Notification = alarm(
+        context, trip, fullScreen,
+        title = "About $minutes min to ${trip.name}",
+        text = "Get ready. The arrival alarm will still ring at the destination.",
+        headline = "About $minutes min to",
+    )
+
+    private fun alarm(
+        context: Context,
+        trip: Trip,
+        fullScreen: Boolean,
+        title: String,
+        text: String,
+        headline: String,
+    ): Notification {
         ensureChannels(context)
         val stop = PendingIntent.getBroadcast(
             context, 0, Intent(context, ArrivalStopReceiver::class.java),
@@ -113,8 +136,8 @@ object TripNotifications {
         )
         val builder = builder(context, ARRIVAL_CHANNEL)
             .setSmallIcon(R.drawable.ic_trip_arrow)
-            .setContentTitle("Arrived at ${trip.name}")
-            .setContentText("You have reached your destination")
+            .setContentTitle(title)
+            .setContentText(text)
             .setCategory(Notification.CATEGORY_ALARM)
             .ownGroup("arrival_alarm")
             .setPriority(Notification.PRIORITY_MAX)
@@ -131,6 +154,7 @@ object TripNotifications {
                 context, 0,
                 Intent(context, ArrivalActivity::class.java)
                     .putExtra(EXTRA_NAME, trip.name)
+                    .putExtra(EXTRA_HEADLINE, headline)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
