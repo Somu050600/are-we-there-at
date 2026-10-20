@@ -62,6 +62,13 @@ class TripStoreTest {
     }
 
     @Test
+    fun `the largest radius defaults to 10 km and persists`() {
+        assertEquals(10_000.0, TripStore(context).maxRadius, 0.0)
+        TripStore(context).maxRadius = 50_000.0
+        assertEquals(50_000.0, TripStore(context).maxRadius, 0.0)
+    }
+
+    @Test
     fun `vibrate only defaults off and persists`() {
         assertFalse(TripStore(context).vibrateOnly)
         TripStore(context).vibrateOnly = true

@@ -79,7 +79,13 @@ class AlarmSettings {
     required this.allowed,
     this.batteryUnrestricted = true,
     this.vibrateOnly = false,
+    this.maxRadiusMeters = defaultMaxRadius,
   });
+
+  static const defaultMaxRadius = 10000.0;
+
+  /// Choices for [maxRadiusMeters].
+  static const maxRadiusChoices = [10000.0, 25000.0, 50000.0, 100000.0];
 
   static const defaults = AlarmSettings(enabled: true, allowed: true);
 
@@ -96,6 +102,9 @@ class AlarmSettings {
   /// Alarms vibrate without sound.
   final bool vibrateOnly;
 
+  /// The largest radius the destination sheet offers.
+  final double maxRadiusMeters;
+
   factory AlarmSettings.fromMap(Object? raw) {
     if (raw is! Map) return defaults;
     return AlarmSettings(
@@ -103,6 +112,11 @@ class AlarmSettings {
       allowed: raw['fullScreenAllowed'] as bool? ?? true,
       batteryUnrestricted: raw['batteryUnrestricted'] as bool? ?? true,
       vibrateOnly: raw['vibrateOnly'] as bool? ?? false,
+      maxRadiusMeters: switch (raw['maxRadiusMeters']) {
+        final num meters when maxRadiusChoices.contains(meters.toDouble()) =>
+          meters.toDouble(),
+        _ => defaultMaxRadius,
+      },
     );
   }
 }

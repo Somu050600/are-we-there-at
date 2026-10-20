@@ -48,33 +48,38 @@ class _MyAppState extends State<MyApp> {
     try {
       do {
         _readAgain = false;
-        SharedLocation? location;
+        bool waiting;
         try {
-          location = await NativeService.getSharedLocation();
-        } catch (error) {
-          if (!mounted) return;
+          waiting = await NativeService.hasSharedLocation();
+        } catch (_) {
+          break;
+        }
+        if (!mounted) return;
+        final context = _navigator.currentContext;
+        if (!waiting || context == null || !context.mounted) continue;
+        // Open the sheet right away: reading a short link or looking up a
+        // named place takes a moment, and the sheet says so meanwhile.
+        // The sheet listens only once it is built; an error that comes first
+        // must not count as unhandled. The sheet still receives it.
+        final pending = NativeService.getSharedLocation()..ignore();
+        final error = await showDestinationSheet(
+          context,
+          controller: _controller,
+          pending: pending,
+        );
+        if (!mounted) return;
+        if (error != null) {
           _messenger.currentState?.showSnackBar(
             SnackBar(content: Text(errorMessage(error))),
           );
           // An invalid queued share is consumed by native; drain the next one.
           // Transport errors must not create an infinite retry loop.
-          if (error is FormatException ||
-              error is PlatformException && error.code == 'INVALID_SHARE') {
-            _readAgain = true;
-            continue;
+          if (error is! FormatException &&
+              !(error is PlatformException && error.code == 'INVALID_SHARE')) {
+            break;
           }
-          break;
         }
-        if (!mounted) return;
-        final context = _navigator.currentContext;
-        if (location != null && context != null && context.mounted) {
-          await showDestinationSheet(
-            context,
-            controller: _controller,
-            shared: location,
-          );
-          _readAgain = true;
-        }
+        _readAgain = true;
       } while (mounted && _readAgain);
     } finally {
       _readingShare = false;

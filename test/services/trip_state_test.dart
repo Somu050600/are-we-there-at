@@ -35,6 +35,15 @@ void main() {
     expect(settings.enabled, isFalse);
     expect(settings.allowed, isTrue);
     expect(settings.batteryUnrestricted, isTrue);
+    expect(settings.maxRadiusMeters, 10000);
+    expect(
+      AlarmSettings.fromMap({'maxRadiusMeters': 25000}).maxRadiusMeters,
+      25000,
+    );
+    expect(
+      AlarmSettings.fromMap({'maxRadiusMeters': 12345}).maxRadiusMeters,
+      10000,
+    );
     expect(
       AlarmSettings.fromMap({'batteryUnrestricted': false}).batteryUnrestricted,
       isFalse,

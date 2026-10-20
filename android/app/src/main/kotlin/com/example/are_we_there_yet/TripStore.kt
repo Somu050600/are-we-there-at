@@ -101,6 +101,11 @@ class TripStore(context: Context) {
         @Synchronized get() = preferences.getBoolean(KEY_FULL_SCREEN, true)
         @Synchronized set(value) = commit { putBoolean(KEY_FULL_SCREEN, value) }
 
+    /** The largest radius the destination sheet offers, in metres. */
+    var maxRadius: Double
+        @Synchronized get() = preferences.getFloat(KEY_MAX_RADIUS, DEFAULT_MAX_RADIUS.toFloat()).toDouble()
+        @Synchronized set(value) = commit { putFloat(KEY_MAX_RADIUS, value.toFloat()) }
+
     /** Alarms vibrate without sound, e.g. for a quiet carriage. */
     var vibrateOnly: Boolean
         @Synchronized get() = preferences.getBoolean(KEY_VIBRATE_ONLY, false)
@@ -123,5 +128,7 @@ class TripStore(context: Context) {
         private const val KEY_FULL_SCREEN = "full_screen_alarm"
         private const val KEY_LEGACY_CLEANUP = "legacy_geofences_removed"
         private const val KEY_VIBRATE_ONLY = "vibrate_only"
+        private const val KEY_MAX_RADIUS = "max_radius_meters"
+        private const val DEFAULT_MAX_RADIUS = 10_000.0
     }
 }

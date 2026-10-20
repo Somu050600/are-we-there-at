@@ -1,9 +1,22 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Google Places key that finds the exact place a Maps link names. CI passes it as an
+// environment variable; a local build can set PLACES_API_KEY in android/local.properties.
+// Without it, shared places are looked up by name and marked approximate.
+val placesApiKey = (
+    System.getenv("PLACES_API_KEY")?.takeIf { it.isNotBlank() }
+        ?: rootProject.file("local.properties").takeIf { it.exists() }
+            ?.let { file -> Properties().apply { file.inputStream().use { load(it) } }.getProperty("PLACES_API_KEY") }
+        ?: ""
+    ).trim()
+require(placesApiKey.matches(Regex("[A-Za-z0-9_-]*"))) { "PLACES_API_KEY has unexpected characters" }
 
 android {
     namespace = "com.example.are_we_there_yet"
@@ -29,6 +42,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        buildConfigField("String", "PLACES_API_KEY", "\"$placesApiKey\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     // CI supplies the release key (see .github/workflows/release.yml). Local

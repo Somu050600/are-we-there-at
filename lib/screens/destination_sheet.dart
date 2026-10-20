@@ -5,17 +5,22 @@ import '../services/error_message.dart';
 import '../services/native_service.dart';
 import '../services/trip_controller.dart';
 import '../util/haptics.dart';
+import '../util/radius_scale.dart';
 import '../widgets/destination_icon.dart';
 
 /// Bottom sheet to save a shared place ([shared]) or edit [existing].
-Future<void> showDestinationSheet(
+///
+/// With [pending], the sheet opens at once and says it is finding the place
+/// while the share is read. If reading fails, it closes and returns the error.
+Future<Object?> showDestinationSheet(
   BuildContext context, {
   required TripController controller,
   Destination? existing,
   SharedLocation? shared,
+  Future<SharedLocation?>? pending,
 }) {
-  assert((existing == null) != (shared == null));
-  return showModalBottomSheet<void>(
+  assert([existing, shared, pending].where((it) => it != null).length == 1);
+  return showModalBottomSheet<Object?>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
@@ -23,6 +28,7 @@ Future<void> showDestinationSheet(
       controller: controller,
       existing: existing,
       shared: shared,
+      pending: pending,
     ),
   );
 }
@@ -33,19 +39,23 @@ class DestinationSheet extends StatefulWidget {
     required this.controller,
     this.existing,
     this.shared,
+    this.pending,
   });
 
   final TripController controller;
   final Destination? existing;
   final SharedLocation? shared;
+  final Future<SharedLocation?>? pending;
 
   @override
   State<DestinationSheet> createState() => _DestinationSheetState();
 }
 
 class _DestinationSheetState extends State<DestinationSheet> {
-  late final TextEditingController _name;
+  final _name = TextEditingController();
   late Destination _draft;
+  SharedLocation? _shared;
+  bool _loading = false;
   bool _busy = false;
   String? _error;
 
@@ -54,19 +64,48 @@ class _DestinationSheetState extends State<DestinationSheet> {
   @override
   void initState() {
     super.initState();
-    final shared = widget.shared;
-    _draft =
-        widget.existing ??
-        Destination(
-          id: const Uuid().v4(),
-          name: shared!.name,
-          latitude: shared.lat,
-          longitude: shared.lng,
-          radius: 200,
-          createdAt: DateTime.now(),
-          sharedLink: shared.sharedLink,
-        );
-    _name = TextEditingController(text: _draft.name ?? '');
+    final existing = widget.existing;
+    if (existing != null) {
+      _show(existing);
+    } else if (widget.shared != null) {
+      _showShared(widget.shared!);
+    } else {
+      _loading = true;
+      widget.pending!.then(
+        (shared) {
+          if (!mounted) return;
+          // Taken by another reader in the meantime: nothing to show.
+          if (shared == null) return Navigator.of(context).pop();
+          setState(() {
+            _loading = false;
+            _showShared(shared);
+          });
+        },
+        onError: (Object error) {
+          if (mounted) Navigator.of(context).pop(error);
+        },
+      );
+    }
+  }
+
+  void _show(Destination destination) {
+    _draft = destination;
+    _name.text = destination.name ?? '';
+  }
+
+  void _showShared(SharedLocation shared) {
+    _shared = shared;
+    _show(
+      Destination(
+        id: const Uuid().v4(),
+        name: shared.name,
+        latitude: shared.lat,
+        longitude: shared.lng,
+        radius: 200,
+        createdAt: DateTime.now(),
+        sharedLink: shared.sharedLink,
+      ),
+    );
   }
 
   @override
@@ -105,10 +144,60 @@ class _DestinationSheetState extends State<DestinationSheet> {
     }
   }
 
+  Widget _finding(ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'New Destination',
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHigh,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: Row(
+            children: [
+              const SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  'Finding the place…',
+                  style: theme.textTheme.bodyLarge,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        _cancelButton(),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    if (_loading) return _finding(theme);
     final controller = widget.controller;
+    // A destination saved with a larger radius keeps it on the scale.
+    final stops = radiusStops(
+      [
+        controller.alarmSettings.value.maxRadiusMeters,
+        _draft.radius,
+      ].reduce((a, b) => a > b ? a : b),
+    );
+    final stop = nearestStop(stops, _draft.radius);
     return PopScope(
       canPop: !_busy,
       child: Padding(
@@ -181,7 +270,7 @@ class _DestinationSheetState extends State<DestinationSheet> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (widget.shared?.approximate ?? false)
+                    if (_shared?.approximate ?? false)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
@@ -194,24 +283,23 @@ class _DestinationSheetState extends State<DestinationSheet> {
                       ),
                     const SizedBox(height: 16),
                     Text(
-                      'Radius: ${_draft.radius.round()} m',
+                      'Radius: ${formatRadius(_draft.radius)}',
                       style: theme.textTheme.bodyMedium,
                     ),
                     Slider(
-                      value: _draft.radius.clamp(50, 10000).toDouble(),
-                      min: 50,
-                      max: 10000,
-                      divisions: 199,
-                      label: '${_draft.radius.round()} m',
+                      value: stop.toDouble(),
+                      max: (stops.length - 1).toDouble(),
+                      divisions: stops.length - 1,
+                      label: formatRadius(stops[stop]),
                       onChanged: _busy
                           ? null
                           : (value) {
-                              // One click per 50 m step, not per frame.
-                              if (value.round() != _draft.radius.round()) {
-                                Haptics.tap();
-                              }
+                              final radius = stops[value.round()];
+                              if (radius == _draft.radius) return;
+                              // One click per step, not per frame.
+                              Haptics.tap();
                               setState(
-                                () => _draft = _draft.copyWith(radius: value),
+                                () => _draft = _draft.copyWith(radius: radius),
                               );
                             },
                     ),

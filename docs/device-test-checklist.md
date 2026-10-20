@@ -9,6 +9,14 @@ distance at which the alarm rang.
   ring after the update.
 - Share from Google Maps: a place, a dropped pin and a shortened link (online
   and offline). The sheet opens once per share with name and coordinates.
+- Share a short link on a slow connection: the sheet opens at once with
+  "Finding the place…", then shows the place; Cancel while it loads saves
+  nothing.
+- Settings → Largest alarm radius 50 km: the sheet's slider reaches 50 km and
+  a trip with that radius rings on entering it.
+- With a release build: share a named place from the Google Maps app. The
+  sheet shows it without "Approximate" and at the place Maps showed (try one
+  with a same-named place nearby).
 - Start: deny precise location, allow approximate only, then allow precise.
   Deny notifications on Android 13+, then allow. A refused Start keeps the
   destination saved.

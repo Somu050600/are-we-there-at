@@ -112,6 +112,8 @@ class MainActivity : FlutterActivity() {
     private fun onMethodCall(call: MethodCall, rawResult: MethodChannel.Result) {
         when (call.method) {
             "getSharedLocation" -> getSharedLocation(rawResult)
+            // Lets the app open the sheet while the share is still being read.
+            "hasSharedLocation" -> track(rawResult).success(inbox.hasShares())
             "startTrip" -> parseOrError(rawResult) { result ->
                 val trip = NativeArguments.trip(call.arguments)
                 enqueueMutation(result, requiresLocation = true) { done ->
@@ -145,6 +147,10 @@ class MainActivity : FlutterActivity() {
             }
             "openFullScreenSettings" -> openFullScreenSettings(rawResult)
             "requestBatteryExemption" -> requestBatteryExemption(rawResult)
+            "setMaxRadius" -> parseOrError(rawResult) { result ->
+                store.maxRadius = NativeArguments.maxRadius(call.arguments)
+                result.success(alarmSettings())
+            }
             "setVibrateOnly" -> parseOrError(rawResult) { result ->
                 store.vibrateOnly = NativeArguments.enabled(call.arguments)
                 result.success(alarmSettings())
@@ -199,6 +205,7 @@ class MainActivity : FlutterActivity() {
         "fullScreenAllowed" to TripNotifications.canUseFullScreen(this),
         "batteryUnrestricted" to isBatteryUnrestricted(),
         "vibrateOnly" to store.vibrateOnly,
+        "maxRadiusMeters" to store.maxRadius,
     )
 
     private fun openPhoneMakerSettings(rawResult: MethodChannel.Result) {
@@ -312,6 +319,7 @@ class MainActivity : FlutterActivity() {
                     share.text,
                     SafeGoogleMapsRedirectResolver,
                     AndroidPlaceGeocoder(this@MainActivity),
+                    GooglePlaces.finder(this@MainActivity),
                 )
                 if (location == null) {
                     result.error(

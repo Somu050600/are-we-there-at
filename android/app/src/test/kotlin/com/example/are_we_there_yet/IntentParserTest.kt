@@ -135,6 +135,61 @@ class IntentParserTest {
     }
 
     @Test
+    fun `a named place is found exactly by its Maps id before any guess`() = runBlocking {
+        val expanded = "https://www.google.com/maps/place/Beyond+Bajji,+Elite+wine+walk+in+Store,+opp.+SITE," +
+            "+near+K+V+R+PETROL+BUNK,+Saraswathi+Nagar,+Dargamitta,+Nellore,+Andhra+Pradesh+524003/data=!4m2!3m1" +
+            "!1s0x3a4cf32101cd9b9b:0xf4638626f70b8787!18m1!1e1?utm_source=mstt_1&entry=gps"
+        val asked = mutableListOf<Pair<String, String?>>()
+        val finder = PlaceFinder { query, cid ->
+            asked += query to cid
+            IntentParser.ParsedLocation(14.4372674, 79.9705642)
+        }
+        var geocoded = false
+
+        val parsed = IntentParser.parseText(
+            "https://maps.app.goo.gl/CbSikGiBXYpUyJxw7",
+            RedirectResolver { expanded },
+            PlaceGeocoder { geocoded = true; null },
+            finder,
+        )
+
+        assertEquals(14.4372674, parsed?.lat ?: 0.0, 0.0)
+        assertEquals(79.9705642, parsed?.lng ?: 0.0, 0.0)
+        assertEquals("Beyond Bajji", parsed?.name)
+        assertFalse(parsed!!.approximate)
+        assertFalse(geocoded)
+        assertEquals("17610066469860378503", asked.single().second)
+        assertTrue(asked.single().first.startsWith("Beyond Bajji, Elite wine walk in Store"))
+    }
+
+    @Test
+    fun `without an answer from Google the place is geocoded as before`() = runBlocking {
+        val parsed = IntentParser.parseText(
+            "https://www.google.com/maps/place/Blue+Cafe,+MG+Road,+Bengaluru/data=!4m2!3m1!1s0x1:0x2",
+            NoRedirects,
+            PlaceGeocoder { IntentParser.ParsedLocation(12.97, 77.6) },
+            PlaceFinder { _, _ -> null },
+        )
+
+        assertEquals(12.97, parsed?.lat ?: 0.0, 0.0)
+        assertTrue(parsed?.approximate == true)
+    }
+
+    @Test
+    fun `links with coordinates never ask Google`() = runBlocking {
+        var asked = false
+        val parsed = IntentParser.parseText(
+            "https://www.google.com/maps/place/Cafe/@12.9,77.5,17z/data=!3m1!4b1!4m6!3m5!1s0x1:0x2!8m2!3d12.91!4d77.51",
+            NoRedirects,
+            PlaceGeocoder.None,
+            PlaceFinder { _, _ -> asked = true; null },
+        )
+
+        assertEquals(12.91, parsed?.lat ?: 0.0, 0.0)
+        assertFalse(asked)
+    }
+
+    @Test
     fun `lookup retries with the address alone when the full name finds nothing`() = runBlocking {
         val queries = mutableListOf<String>()
         val geocoder = PlaceGeocoder { query ->

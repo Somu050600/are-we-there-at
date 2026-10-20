@@ -1,7 +1,9 @@
 package com.example.are_we_there_yet
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SharedLocationInboxTest {
@@ -13,8 +15,10 @@ class SharedLocationInboxTest {
         inbox.add(malformed)
         inbox.add(valid)
 
+        assertTrue(inbox.hasShares())
         assertEquals(malformed, inbox.take())
         assertEquals(valid, inbox.take())
+        assertFalse(inbox.hasShares())
         assertNull(inbox.take())
     }
 }
