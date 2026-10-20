@@ -21,12 +21,14 @@ data class AlarmContent(val name: String, val title: String, val text: String, v
         private const val EXTRA_TEXT = "alarm_text"
         private const val EXTRA_HEADLINE = "alarm_headline"
 
-        fun from(intent: Intent): AlarmContent? = AlarmContent(
-            name = intent.getStringExtra(EXTRA_NAME) ?: return null,
-            title = intent.getStringExtra(EXTRA_TITLE) ?: return null,
-            text = intent.getStringExtra(EXTRA_TEXT) ?: return null,
-            headline = intent.getStringExtra(EXTRA_HEADLINE) ?: return null,
-        )
+        fun from(intent: Intent): AlarmContent? {
+            return AlarmContent(
+                name = intent.getStringExtra(EXTRA_NAME) ?: return null,
+                title = intent.getStringExtra(EXTRA_TITLE) ?: return null,
+                text = intent.getStringExtra(EXTRA_TEXT) ?: return null,
+                headline = intent.getStringExtra(EXTRA_HEADLINE) ?: return null,
+            )
+        }
     }
 }
 

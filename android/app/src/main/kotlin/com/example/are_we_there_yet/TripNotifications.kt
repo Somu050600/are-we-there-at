@@ -87,7 +87,7 @@ object TripNotifications {
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_NAVIGATION)
             .setShowWhen(fixTimeMillis != null)
-            .apply { fixTimeMillis?.let(::setWhen) }
+            .apply { fixTimeMillis?.let { setWhen(it) } }
             .ownGroup("trip_progress")
             .setContentIntent(openApp(context))
             .addAction(toggle)
