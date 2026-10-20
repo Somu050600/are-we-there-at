@@ -9,6 +9,7 @@ import 'package:are_we_there_yet/db/alarm_database.dart';
 import 'package:are_we_there_yet/models/destination.dart';
 import 'package:are_we_there_yet/services/trip_controller.dart';
 import 'package:are_we_there_yet/services/trip_state.dart';
+import 'package:are_we_there_yet/widgets/destination_tile.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -448,6 +449,26 @@ void main() {
     await mount(tester);
     await trip(tester, {'state': 'tracking', 'destinationId': 'one'});
     expect(find.text('Calculating…'), findsOneWidget);
+    await finish(tester);
+  });
+
+  appTest('new fixes rebuild the top card but not the rows', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    final fix = {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 4230.0,
+      'progress': 0.5,
+    };
+    await trip(tester, fix);
+    DestinationTile row() => tester.widget(find.byType(DestinationTile));
+    final before = row();
+    await trip(tester, {...fix, 'distanceMeters': 3900.0, 'progress': 0.55});
+    expect(find.text('3.9 km'), findsOneWidget);
+    expect(identical(row(), before), isTrue);
+    await trip(tester, {...fix, 'state': 'paused'});
+    expect(identical(row(), before), isFalse);
     await finish(tester);
   });
 

@@ -223,6 +223,23 @@ class TripServiceTest {
     }
 
     @Test
+    fun `the notification is reposted only when it changes or a minute passed`() {
+        started()
+        fun posted() = shadowOf(manager).getNotification(TripNotifications.PROGRESS_ID).`when`
+        far()
+        val first = posted()
+        far() // same text, 10 s later
+        assertEquals(first, posted())
+        near() // new text
+        val moved = posted()
+        assertTrue(moved > first)
+        repeat(5) { near() } // 50 s of the same text
+        assertEquals(moved, posted())
+        near() // a minute since the last post
+        assertTrue(posted() > moved)
+    }
+
+    @Test
     fun `losing the GPS signal shows waiting until the next fix`() {
         started()
         far()

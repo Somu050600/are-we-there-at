@@ -88,6 +88,18 @@ first reaches 20% and again at 10%. Plugging in clears it and re-arms both
 warnings. The level is read when the trip starts and from
 `ACTION_BATTERY_CHANGED` while the service runs. Stop and arrival clear it.
 
+## Smaller savings
+
+- The progress notification is reposted from a fix only when its text
+  changes (at most every 5 s) or a minute has passed, not on every fix.
+- Home rebuilds only the top card on each fix; destination rows rebuild when
+  the active destination or its paused state changes.
+- `TripStore.active()` caches the parsed trip, keyed by its stored text, so
+  every instance (service, activity, boot receiver) still sees the latest.
+- Not done: batching fixes (`setMaxUpdateDelayMillis`). Far away, fixes are
+  already 1–10 minutes apart, so batching saves almost nothing, and it delays
+  acting on a fix, eating the margin the interval plan relies on.
+
 ## Testing
 
 Kotlin: tier table and the 180 km/h crossing check, edge distance, fallback

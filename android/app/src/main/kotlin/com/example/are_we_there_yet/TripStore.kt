@@ -60,7 +60,15 @@ data class TripSnapshot(
 class TripStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
-    @Synchronized fun active(): Trip? = preferences.getString(KEY_ACTIVE, null)?.let { raw ->
+    @Synchronized fun active(): Trip? {
+        val raw = preferences.getString(KEY_ACTIVE, null) ?: return null
+        // Read on every fix and battery broadcast; parse only when it changed.
+        // Keyed by the stored text, so it is shared safely by every instance.
+        parsed?.let { (text, trip) -> if (text == raw) return trip }
+        return parse(raw).also { parsed = raw to it }
+    }
+
+    private fun parse(raw: String): Trip? =
         runCatching {
             val json = JSONObject(raw)
             Trip(
@@ -75,7 +83,6 @@ class TripStore(context: Context) {
                 alerted = json.optBoolean("alerted", false),
             )
         }.getOrNull()
-    }
 
     @Synchronized fun saveActive(trip: Trip) {
         val json = JSONObject()
@@ -106,6 +113,7 @@ class TripStore(context: Context) {
 
     companion object {
         internal const val PREFERENCES = "trip_state_v1"
+        @Volatile private var parsed: Pair<String, Trip?>? = null
         private const val KEY_ACTIVE = "active"
         private const val KEY_FULL_SCREEN = "full_screen_alarm"
         private const val KEY_LEGACY_CLEANUP = "legacy_geofences_removed"

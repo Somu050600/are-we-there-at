@@ -28,6 +28,8 @@ class TripService : Service() {
     private var maxSpeed: Double? = null
     /** Set while the direction screen is open. */
     private var fast = false
+    /** Text and fix time of the progress notification last posted from a fix. */
+    private var posted: Pair<String, Long>? = null
     /** Location was reported unavailable and no fix came since. */
     private var waitingForSignal = false
     /** Set once low-accuracy updates failed; GPS is used from then on. */
@@ -177,7 +179,7 @@ class TripService : Service() {
             current = current.copy(alerted = true).also(store::saveActive)
             ringTimeAlert(current)
         }
-        notifyProgress(current)
+        notifyProgressFrom(fix, current)
         publish(TripStatus.TRACKING, current)
         val next = planFor(current)
         if (next != plan) track(next) else watchLowPower(next)
@@ -279,6 +281,7 @@ class TripService : Service() {
     }
 
     private fun goForeground(trip: Trip) {
+        posted = null
         val notification = progressNotification(trip)
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(TripNotifications.PROGRESS_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
@@ -287,8 +290,25 @@ class TripService : Service() {
         }
     }
 
-    private fun notifyProgress(trip: Trip) =
+    private fun notifyProgress(trip: Trip) {
+        posted = null
         notificationManager().notify(TripNotifications.PROGRESS_ID, progressNotification(trip))
+    }
+
+    /**
+     * Rebuilding the notification on every fix (each second with the direction
+     * screen open) costs work for nothing. Repost when the text changes, at
+     * most every 5 s, and at least once a minute so the header time stays true.
+     */
+    private fun notifyProgressFrom(fix: Fix, trip: Trip) {
+        val text = TripNotifications.progressText(trip, lastDistance, progressOf(trip), waitingForSignal)
+        val last = posted
+        val elapsed = last?.let { fix.timeMillis - it.second } ?: Long.MAX_VALUE
+        val due = elapsed >= NOTIFICATION_REFRESH_MILLIS || (text != last?.first && elapsed >= NOTIFICATION_MIN_GAP_MILLIS)
+        if (!due) return
+        notifyProgress(trip)
+        posted = text to fix.timeMillis
+    }
 
     private fun progressNotification(trip: Trip) = TripNotifications.progress(
         this, trip, lastDistance, progressOf(trip), lastFix?.timeMillis, waitingForSignal,
@@ -350,6 +370,8 @@ class TripService : Service() {
         const val ACTION_LOW_POWER_TIMEOUT = "com.example.are_we_there_yet.trip.LOW_POWER_TIMEOUT"
         private const val EXTRA_ENABLED = "enabled"
         internal const val LOW_POWER_GRACE_MILLIS = 60_000L
+        private const val NOTIFICATION_MIN_GAP_MILLIS = 5_000L
+        private const val NOTIFICATION_REFRESH_MILLIS = 60_000L
 
         /** False after a force-stop, update or reboot killed the service. */
         @Volatile var isRunning = false

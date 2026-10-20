@@ -66,14 +66,7 @@ object TripNotifications {
     ): Notification {
         ensureChannels(context)
         val percent = TripMath.percent(progress)
-        val text = when {
-            trip.paused && distance != null -> "Paused · ${TripMath.formatDistance(distance)} remaining"
-            trip.paused -> "Paused"
-            waiting && distance != null -> "Waiting for GPS · ${TripMath.formatDistance(distance)} at last fix"
-            waiting -> "Waiting for GPS…"
-            distance == null -> "Calculating… remaining (0%)"
-            else -> "${TripMath.formatDistance(distance)} remaining ($percent%)"
-        }
+        val text = progressText(trip, distance, progress, waiting)
         val toggle = if (trip.paused) {
             action(context, "Resume", TripService.ACTION_RESUME)
         } else {
@@ -104,6 +97,16 @@ object TripNotifications {
             builder.setProgress(100, percent, distance == null && !trip.paused)
         }
         return builder.build()
+    }
+
+    /** The progress notification's text; unchanged text needs no repost. */
+    fun progressText(trip: Trip, distance: Double?, progress: Double?, waiting: Boolean = false): String = when {
+        trip.paused && distance != null -> "Paused · ${TripMath.formatDistance(distance)} remaining"
+        trip.paused -> "Paused"
+        waiting && distance != null -> "Waiting for GPS · ${TripMath.formatDistance(distance)} at last fix"
+        waiting -> "Waiting for GPS…"
+        distance == null -> "Calculating… remaining (0%)"
+        else -> "${TripMath.formatDistance(distance)} remaining (${TripMath.percent(progress)}%)"
     }
 
     fun arrival(context: Context, trip: Trip, fullScreen: Boolean): Notification = alarm(
