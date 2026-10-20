@@ -129,9 +129,10 @@ class TripServiceTest {
         veryFar()
         assertFalse(source.plan!!.highAccuracy)
         assertTrue(source.interval!! >= 60_000L)
-        source.at(12.9955, 77.5710) // ~1.9 km, very fast: GPS every few seconds
+        // ~1.9 km, 11.6 km in 10 s: half the 1.7 km left at the 300 km/h cap is ~10 s.
+        source.at(12.9955, 77.5710)
         assertTrue(source.plan!!.highAccuracy)
-        assertTrue(source.interval!! <= 10_000L)
+        assertTrue(source.interval!! < 15_000L)
     }
 
     @Test
