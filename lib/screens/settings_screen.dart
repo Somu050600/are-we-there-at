@@ -5,6 +5,7 @@ import '../services/trip_controller.dart';
 import '../services/trip_state.dart';
 import '../util/haptics.dart';
 import '../util/phone_maker.dart';
+import '../util/radius_scale.dart';
 import '../widgets/full_screen_alarm_card.dart';
 
 /// Alarm options and what keeps a long trip from being stopped.
@@ -110,6 +111,50 @@ class _SettingsScreenState extends State<SettingsScreen>
               child: Text(
                 'Snooze on a ringing alarm rings it again in 5 minutes.',
                 style: muted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.radar),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Text(
+                            'Largest alarm radius',
+                            style: theme.textTheme.titleSmall,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'How far the radius slider goes. A large radius rings '
+                      'well before the stop, which suits long trips.',
+                      style: muted,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final meters in AlarmSettings.maxRadiusChoices)
+                          ChoiceChip(
+                            label: Text(formatRadius(meters)),
+                            selected: settings.maxRadiusMeters == meters,
+                            onSelected: (_) => _attempt(
+                              () => _controller.setMaxRadius(meters),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
             header('Keep tracking alive'),

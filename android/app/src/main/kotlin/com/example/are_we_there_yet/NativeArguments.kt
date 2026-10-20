@@ -5,7 +5,10 @@ data class Place(val lat: Double, val lng: Double, val name: String)
 
 object NativeArguments {
     const val MIN_RADIUS = 50.0
-    const val MAX_RADIUS = 10_000.0
+    /** The largest radius any setting allows; [TripStore.maxRadius] limits the sheet further. */
+    const val MAX_RADIUS = 100_000.0
+    /** Choices for the largest radius the destination sheet offers. */
+    val MAX_RADIUS_CHOICES = listOf(10_000.0, 25_000.0, 50_000.0, 100_000.0)
     const val MAX_ALERT_MINUTES = 120
 
     fun trip(arguments: Any?): Trip {
@@ -38,6 +41,10 @@ object NativeArguments {
         )
         return Place(trip.lat, trip.lng, trip.name)
     }
+
+    fun maxRadius(arguments: Any?): Double = ((arguments as? Map<*, *>)?.get("meters") as? Number)?.toDouble()
+        ?.takeIf { it in MAX_RADIUS_CHOICES }
+        ?: throw InvalidArgumentsException("meters must be one of $MAX_RADIUS_CHOICES")
 
     fun enabled(arguments: Any?): Boolean = (arguments as? Map<*, *>)?.get("enabled") as? Boolean
         ?: throw InvalidArgumentsException("enabled must be true or false")

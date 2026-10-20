@@ -21,6 +21,9 @@ class SharedLocation {
 }
 
 class NativeService {
+  /// The largest radius Android accepts; a setting limits the sheet further.
+  static const maxRadius = 100000.0;
+
   static const _channel = MethodChannel('are_we_there/native');
   static const _trips = EventChannel('are_we_there/trip');
   static const _headings = EventChannel('are_we_there/heading');
@@ -34,6 +37,10 @@ class NativeService {
             },
     );
   }
+
+  /// Whether a share is waiting, without reading it (reading takes a moment).
+  static Future<bool> hasSharedLocation() async =>
+      await _channel.invokeMethod<bool>('hasSharedLocation') ?? false;
 
   static Future<SharedLocation?> getSharedLocation() async {
     final result = await _channel.invokeMethod<Object?>('getSharedLocation');
@@ -74,9 +81,9 @@ class NativeService {
         lng.abs() > 180 ||
         !radius.isFinite ||
         radius < 50 ||
-        radius > 10000) {
+        radius > maxRadius) {
       throw ArgumentError(
-        'Choose valid coordinates and a radius between 50 m and 10 km.',
+        'Choose valid coordinates and a radius between 50 m and 100 km.',
       );
     }
     if (alertMinutes != null && (alertMinutes < 1 || alertMinutes > 120)) {
@@ -128,6 +135,13 @@ class NativeService {
       AlarmSettings.fromMap(
         await _channel.invokeMethod<Object?>('setFullScreenAlarm', {
           'enabled': enabled,
+        }),
+      );
+
+  static Future<AlarmSettings> setMaxRadius(double meters) async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('setMaxRadius', {
+          'meters': meters,
         }),
       );
 

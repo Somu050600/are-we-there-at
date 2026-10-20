@@ -23,6 +23,7 @@ void main() {
   late List<Object> shares;
   Object? startError;
   Completer<void>? startGate;
+  Completer<void>? shareGate;
   late bool fullScreenAllowed;
   late String phoneMaker;
   late List<String> haptics;
@@ -49,6 +50,7 @@ void main() {
     shares = [];
     startError = null;
     startGate = null;
+    shareGate = null;
     fullScreenAllowed = true;
     phoneMaker = 'google';
     haptics = [];
@@ -61,9 +63,13 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       switch (call.method) {
+        case 'hasSharedLocation':
+          return shares.isNotEmpty;
         case 'getSharedLocation':
+          // Like native: the share is taken at once, then read.
           if (shares.isEmpty) return null;
           final value = shares.removeAt(0);
+          if (shareGate != null) await shareGate!.future;
           if (value is Exception) throw value;
           return value;
         case 'startTrip':
@@ -86,6 +92,8 @@ void main() {
           };
         case 'getPhoneMaker':
           return phoneMaker;
+        case 'setMaxRadius':
+          return {'maxRadiusMeters': call.arguments['meters']};
       }
       return null;
     });
@@ -263,6 +271,61 @@ void main() {
     expect((await db.getAllDestinations()).single.alertMinutes, 10);
     final start = calls.lastWhere((c) => c.method == 'startTrip');
     expect(start.arguments['alertMinutes'], 10);
+    await finish(tester);
+  });
+
+  appTest('the sheet opens at once and says it is finding the place', (
+    tester,
+  ) async {
+    share('Majestic');
+    shareGate = Completer<void>();
+    await tester.pumpWidget(MyApp(controller: controller, now: () => now));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Finding the place…'), findsOneWidget);
+    expect(find.text('Start'), findsNothing);
+
+    shareGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Finding the place…'), findsNothing);
+    expect(find.widgetWithText(TextField, 'Majestic'), findsOneWidget);
+    expect(find.text('Start'), findsOneWidget);
+    await finish(tester);
+  });
+
+  appTest('cancelling while finding the place saves nothing', (tester) async {
+    share();
+    shareGate = Completer<void>();
+    await tester.pumpWidget(MyApp(controller: controller, now: () => now));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    shareGate!.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('New Destination'), findsNothing);
+    expect(await db.getAllDestinations(), isEmpty);
+    await finish(tester);
+  });
+
+  appTest('the largest radius setting widens the sheet slider', (tester) async {
+    await mount(tester);
+    await tap(tester, find.byTooltip('Settings'));
+    await tap(tester, find.widgetWithText(ChoiceChip, '50 km'));
+    final call = calls.lastWhere((c) => c.method == 'setMaxRadius');
+    expect(call.arguments, {'meters': 50000.0});
+    expect(controller.alarmSettings.value.maxRadiusMeters, 50000);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    share();
+    await warmShare(tester);
+    await tester.ensureVisible(find.byType(Slider));
+    await tester.drag(find.byType(Slider), const Offset(2000, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Radius: 50 km'), findsOneWidget);
+    await tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    expect((await db.getAllDestinations()).single.radius, 50000);
     await finish(tester);
   });
 

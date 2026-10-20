@@ -10,8 +10,9 @@ arrive. Requires Google Play Services.
    `maps.app.goo.gl` short links), an Apple Maps, OpenStreetMap, Waze, Bing,
    HERE or Yandex link, a `geo:` URI, a plus code, or coordinates such as
    `12.97, 77.59` or `12°58'17"N 77°35'40"E`. Surrounding text is ignored. A
-   sheet opens with the coordinates.
-2. Name it, pick an icon and choose a radius from 50 m to 10 km. Optionally
+   sheet opens at once and fills in when the place is found.
+2. Name it, pick an icon and choose a radius from 50 m to 10 km (up to 100 km
+   with **Largest alarm radius** in Settings). Optionally
    have it also ring 5, 10, 15 or 30 minutes before arriving.
 3. Tap **Start** to save and start the trip, or **Save** to keep it for later.
    Allow precise location and notifications when asked.
@@ -21,7 +22,8 @@ arrive. Requires Google Play Services.
    **Full-screen alarm** on, it also shows a full-screen page over the lock
    screen (Android 14+ may ask you to allow full-screen notifications).
 
-**Settings** (gear on Home) has the full-screen alarm, **Vibrate only**, battery
+**Settings** (gear on Home) has the full-screen alarm, **Vibrate only**, the
+largest alarm radius, battery
 optimization and, on Xiaomi, Samsung, OPPO, vivo and Huawei phones, a shortcut
 to the maker's own background-app setting. For long or overnight trips, allow
 the app to run without battery restrictions; a long trip asks once.

@@ -65,7 +65,7 @@ void main() {
       -1.0,
       0.0,
       49.0,
-      10001.0,
+      100001.0,
       double.nan,
       double.infinity,
     ]) {
@@ -86,9 +86,9 @@ void main() {
       _trip(id: 'north', lat: 90, lng: 180, radius: 50),
     );
     await NativeService.startTrip(
-      _trip(id: 'south', lat: -90, lng: -180, radius: 10000),
+      _trip(id: 'south', lat: -90, lng: -180, radius: 100000),
     );
-    expect(calls.map((c) => c.arguments['radius']), [50.0, 10000.0]);
+    expect(calls.map((c) => c.arguments['radius']), [50.0, 100000.0]);
   });
   test('sends the alert time and rejects impossible ones', () async {
     final calls = <MethodCall>[];

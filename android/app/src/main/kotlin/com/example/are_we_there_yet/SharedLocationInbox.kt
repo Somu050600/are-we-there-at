@@ -8,6 +8,7 @@ class SharedLocationInbox {
     private val queue = ArrayDeque<IncomingShare>()
     @Synchronized fun add(share: IncomingShare) = queue.addLast(share)
     @Synchronized fun take(): IncomingShare? = queue.removeFirstOrNull()
+    @Synchronized fun hasShares(): Boolean = queue.isNotEmpty()
 
     companion object {
         fun fromIntent(intent: Intent?): IncomingShare? {

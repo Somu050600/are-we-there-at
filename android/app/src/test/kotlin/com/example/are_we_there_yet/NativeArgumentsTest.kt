@@ -31,7 +31,7 @@ class NativeArgumentsTest {
             args("lat" to 91),
             args("lng" to "2"),
             args("radius" to 49),
-            args("radius" to 10_001),
+            args("radius" to 100_001),
         )
 
         invalid.forEach { values ->
@@ -49,6 +49,15 @@ class NativeArgumentsTest {
             assertThrows(InvalidArgumentsException::class.java) {
                 NativeArguments.trip(args("alertMinutes" to minutes))
             }
+        }
+    }
+
+    @Test
+    fun `radius goes up to 100 km and the setting takes only its choices`() {
+        assertEquals(100_000.0, NativeArguments.trip(args("radius" to 100_000)).radius, 0.0)
+        assertEquals(25_000.0, NativeArguments.maxRadius(mapOf("meters" to 25_000)), 0.0)
+        listOf(0, 12_345, 200_000, "10000").forEach { meters ->
+            assertThrows(InvalidArgumentsException::class.java) { NativeArguments.maxRadius(mapOf("meters" to meters)) }
         }
     }
 
