@@ -34,6 +34,8 @@ class TripService : Service() {
     private var waitingForSignal = false
     /** Set once low-accuracy updates failed; GPS is used from then on. */
     private var lowPowerFailed = false
+    /** The low-power fallback alarm is set. */
+    private var fallbackArmed = false
     private val batteryWatch = BatteryWatch()
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -232,16 +234,20 @@ class TripService : Service() {
      * nothing would wake it.
      */
     private fun watchLowPower(current: LocationPlan?) {
+        val lowPower = current?.highAccuracy == false
+        // GPS fixes come up to every second; skip the system call when idle.
+        if (!lowPower && !fallbackArmed) return
         val alarms = getSystemService(AlarmManager::class.java)
         val timeout = PendingIntent.getService(
             this, ACTION_LOW_POWER_TIMEOUT.hashCode(), actionIntent(this, ACTION_LOW_POWER_TIMEOUT),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         alarms.cancel(timeout)
-        if (current?.highAccuracy == false) {
+        fallbackArmed = lowPower
+        if (lowPower) {
             alarms.setAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                SystemClock.elapsedRealtime() + current.intervalMillis + LOW_POWER_GRACE_MILLIS,
+                SystemClock.elapsedRealtime() + current!!.intervalMillis + LOW_POWER_GRACE_MILLIS,
                 timeout,
             )
         }
