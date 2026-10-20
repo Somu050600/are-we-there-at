@@ -28,6 +28,7 @@ void main() {
   late TripController controller;
   late StreamController<double> headings;
   late List<String> haptics;
+  late List<Object?> fastUpdates;
 
   void init() {
     db = AlarmDatabase(
@@ -41,9 +42,16 @@ void main() {
       states: const Stream<TripState>.empty(),
       now: () => now,
     );
-    headings = StreamController<double>();
+    // Broadcast, so the screen can cancel and listen again.
+    headings = StreamController<double>.broadcast();
     haptics = [];
-    messenger.setMockMethodCallHandler(channel, (_) async => null);
+    fastUpdates = [];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'setFastUpdates') {
+        fastUpdates.add((call.arguments as Map)['enabled']);
+      }
+      return null;
+    });
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       if (call.method == 'HapticFeedback.vibrate') {
         haptics.add('${call.arguments}');
@@ -163,6 +171,42 @@ void main() {
     await tester.pump();
     expect(find.text("You've arrived"), findsOneWidget);
     expect(find.text('Done'), findsOneWidget);
+  });
+
+  screenTest('hiding the app stops fast updates and the compass', (
+    tester,
+  ) async {
+    await show(tester, tracking(bearing: 90));
+    expect(fastUpdates, [true]);
+    expect(headings.hasListener, isTrue);
+
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pump();
+    expect(fastUpdates, [true, false]);
+    expect(headings.hasListener, isFalse);
+
+    for (final state in [
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pump();
+    expect(fastUpdates, [true, false, true]);
+    expect(headings.hasListener, isTrue);
+    headings.add(60);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(turns(tester), closeTo(30 / 360, 1e-9));
+
+    await tester.pumpWidget(const SizedBox());
+    expect(fastUpdates, [true, false, true, false]);
   });
 
   screenTest('a compass that never reports is treated as unavailable', (

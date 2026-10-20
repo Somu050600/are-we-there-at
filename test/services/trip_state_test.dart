@@ -36,9 +36,7 @@ void main() {
     expect(settings.allowed, isTrue);
     expect(settings.batteryUnrestricted, isTrue);
     expect(
-      AlarmSettings.fromMap({
-        'batteryUnrestricted': false,
-      }).batteryUnrestricted,
+      AlarmSettings.fromMap({'batteryUnrestricted': false}).batteryUnrestricted,
       isFalse,
     );
   });
