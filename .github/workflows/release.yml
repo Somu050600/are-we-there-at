@@ -88,7 +88,13 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: flutter build apk --release --build-name "$APP_VERSION" --build-number "$APP_BUILD_NUMBER"
+          # Optional: finds the exact place a Google Maps share names.
+          PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
+        run: |
+          if [ -z "$PLACES_API_KEY" ]; then
+            echo "::warning::PLACES_API_KEY is not set; shared places will be approximate"
+          fi
+          flutter build apk --release --build-name "$APP_VERSION" --build-number "$APP_BUILD_NUMBER"
 
       - name: Verify signing key
         run: |

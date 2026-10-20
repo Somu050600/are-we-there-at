@@ -25,7 +25,8 @@ fun interface PlaceGeocoder {
  * Waze, Bing, HERE, Yandex, or any link with lat/lng parameters), plus codes, and coordinates
  * written as decimals or degrees. It never scrapes HTML for coordinate-shaped arrays. When a
  * share names a place without coordinates (what the Google Maps app sends for a named place),
- * the place is looked up with [PlaceGeocoder] and the result is marked approximate.
+ * [PlaceFinder] finds the exact place by its Maps id; failing that, the place is looked up with
+ * [PlaceGeocoder] and the result is marked approximate.
  */
 object IntentParser {
     data class ParsedLocation(
@@ -60,19 +61,21 @@ object IntentParser {
         intent: Intent,
         resolver: RedirectResolver = SafeGoogleMapsRedirectResolver,
         geocoder: PlaceGeocoder = PlaceGeocoder.None,
+        finder: PlaceFinder = PlaceFinder.None,
     ): ParsedLocation? {
         val text = when (intent.action) {
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
             Intent.ACTION_VIEW -> intent.data?.toString()
             else -> null
         } ?: return null
-        return parseText(text, resolver, geocoder)
+        return parseText(text, resolver, geocoder, finder)
     }
 
     internal suspend fun parseText(
         rawText: String,
         resolver: RedirectResolver,
         geocoder: PlaceGeocoder = PlaceGeocoder.None,
+        finder: PlaceFinder = PlaceFinder.None,
     ): ParsedLocation? {
         val text = clean(rawText)
         val places = mutableListOf<String>()
@@ -90,15 +93,18 @@ object IntentParser {
         textWithoutUrls = textWithoutUrls.replace(geoLine, " ")
         var sawMapsLink = false
         var sawOtherLink = false
+        var cid: String? = null
         for ((_, url) in links) {
             parseMapUrl(url)?.let { return it.withLabel(textLabel(textWithoutUrls)) }
             placeQuery(url)?.let(places::add)
+            googleCid(url)?.let { cid = it }
             if (isMapsLink(url)) sawMapsLink = true else sawOtherLink = true
             if (SafeGoogleMapsRedirectResolver.canResolve(url)) {
                 val resolved = resolver.resolve(url)?.let(::unwrap)
                 if (resolved != null) {
                     parseMapUrl(resolved)?.let { return it.withLabel(textLabel(textWithoutUrls)) }
                     placeQuery(resolved)?.let(places::add)
+                    googleCid(resolved)?.let { cid = it }
                 }
             }
         }
@@ -119,6 +125,12 @@ object IntentParser {
             (!sawOtherLink && plainText.length in 3..200 && sharedLines.size <= 4)
         if (places.isEmpty() && lookUpText && plainText.isNotEmpty() && plainText.lowercase() !in genericLabels) {
             places += plainText
+        }
+        // Google's own search, matched by the link's Maps id, finds the exact place.
+        for (place in places.distinct()) {
+            val found = finder.find(place, cid) ?: continue
+            val located = location(found.lat, found.lng, placeLabel(place)) ?: continue
+            return located.copy(approximate = found.approximate)
         }
         for (place in places.distinct()) {
             for (query in lookupQueries(place)) {
@@ -254,6 +266,13 @@ object IntentParser {
             lng += (value % 4) * lngSize
         }
         return location(lat + latSize / 2, lng + lngSize / 2, null)
+    }
+
+    /** The Maps id of the place a Google link points at, if it has one. */
+    private fun googleCid(url: String): String? {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+        if (provider(uri) != Provider.GOOGLE) return null
+        return GooglePlaces.cid(Uri.decode(url))
     }
 
     private fun isMapsLink(url: String): Boolean {

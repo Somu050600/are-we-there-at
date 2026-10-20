@@ -312,6 +312,7 @@ class MainActivity : FlutterActivity() {
                     share.text,
                     SafeGoogleMapsRedirectResolver,
                     AndroidPlaceGeocoder(this@MainActivity),
+                    GooglePlaces.finder(this@MainActivity),
                 )
                 if (location == null) {
                     result.error(
