@@ -4,6 +4,7 @@ import '../services/error_message.dart';
 import '../services/native_service.dart';
 import '../services/trip_controller.dart';
 import '../services/trip_state.dart';
+import '../widgets/battery_card.dart';
 import '../widgets/destination_tile.dart';
 import '../widgets/full_screen_alarm_card.dart';
 import '../util/haptics.dart';
@@ -42,7 +43,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The user may have changed the full-screen permission in Settings.
+    // The user may have changed the full-screen permission or battery
+    // optimization in Settings.
     if (state == AppLifecycleState.resumed) {
       _controller.refreshAlarmSettings().catchError((Object _) {});
     }
@@ -134,6 +136,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       const SizedBox(height: 32),
                     ],
+                    ValueListenableBuilder<AlarmSettings>(
+                      valueListenable: _controller.alarmSettings,
+                      builder: (context, settings, _) =>
+                          settings.batteryUnrestricted
+                          ? const SizedBox.shrink()
+                          : Padding(
+                              padding: const EdgeInsets.only(bottom: 24),
+                              child: BatteryCard(
+                                onAllow: () => _attempt(
+                                  NativeService.requestBatteryExemption,
+                                ),
+                              ),
+                            ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.only(left: 8, bottom: 12),
                       child: Text(

@@ -19,6 +19,7 @@ object TripNotifications {
     const val PROGRESS_ID = 1001
     const val ARRIVAL_ID = 1002
     const val RESTART_ID = 1003
+    const val BATTERY_ID = 1004
     const val EXTRA_NAME = "destination_name"
     private const val ALARM_TIMEOUT_MILLIS = 5 * 60 * 1000L
     private val VIBRATION = longArrayOf(0, 600, 400, 600)
@@ -131,6 +132,19 @@ object TripNotifications {
             .setContentTitle("Trip paused")
             .ownGroup("trip_notice")
             .setContentText("Trip to ${trip.name} stopped by restart. Tap to resume.")
+            .setAutoCancel(true)
+            .setContentIntent(openApp(context))
+            .build()
+    }
+
+    fun lowBattery(context: Context, trip: Trip, percent: Int): Notification {
+        ensureChannels(context)
+        return builder(context, NOTICE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_trip_arrow)
+            .setContentTitle("Battery at $percent%")
+            .ownGroup("trip_battery")
+            .setContentText("Charge your phone. If it switches off, the alarm for ${trip.name} won't ring.")
+            .setCategory(Notification.CATEGORY_STATUS)
             .setAutoCancel(true)
             .setContentIntent(openApp(context))
             .build()

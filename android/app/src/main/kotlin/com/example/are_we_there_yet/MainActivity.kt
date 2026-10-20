@@ -1,12 +1,14 @@
 package com.example.are_we_there_yet
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
@@ -142,6 +144,7 @@ class MainActivity : FlutterActivity() {
                 result.success(alarmSettings())
             }
             "openFullScreenSettings" -> openFullScreenSettings(rawResult)
+            "requestBatteryExemption" -> requestBatteryExemption(rawResult)
             "setFastUpdates" -> parseOrError(rawResult) { result ->
                 val enabled = NativeArguments.enabled(call.arguments)
                 // Only a running trip changes cadence; never start the service for this.
@@ -188,7 +191,38 @@ class MainActivity : FlutterActivity() {
     private fun alarmSettings() = mapOf(
         "fullScreen" to store.fullScreenEnabled,
         "fullScreenAllowed" to TripNotifications.canUseFullScreen(this),
+        "batteryUnrestricted" to isBatteryUnrestricted(),
     )
+
+    private fun isBatteryUnrestricted() =
+        getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) ?: true
+
+    /**
+     * Battery optimization lets Android and many phone makers stop a long trip's
+     * service. The direct request is a system dialog; Play restricts it, but the
+     * app ships as an APK. Falls back to the list of optimized apps.
+     */
+    @SuppressLint("BatteryLife")
+    private fun requestBatteryExemption(rawResult: MethodChannel.Result) {
+        val result = track(rawResult)
+        val options = listOf(
+            Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.fromParts("package", packageName, null)),
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS),
+            appDetailsIntent(),
+        )
+        for (intent in options) {
+            try {
+                startActivity(intent)
+                result.success(null)
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try the next option.
+            } catch (_: SecurityException) {
+                // Some phone makers block the direct request.
+            }
+        }
+        result.error("SETTINGS_UNAVAILABLE", "Could not open battery settings", null)
+    }
 
     private fun openFullScreenSettings(rawResult: MethodChannel.Result) {
         val result = track(rawResult)

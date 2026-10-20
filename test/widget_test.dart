@@ -487,6 +487,23 @@ void main() {
     await finish(tester);
   });
 
+  appTest('battery optimization shows a card that asks for an exemption', (
+    tester,
+  ) async {
+    await mount(tester);
+    expect(find.text('Battery optimization is on'), findsNothing);
+
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      batteryUnrestricted: false,
+    );
+    await tester.pumpAndSettle();
+    await tap(tester, find.text('Allow'));
+    expect(methods().last, 'requestBatteryExemption');
+    await finish(tester);
+  });
+
   appTest('the active row offers pause and stop', (tester) async {
     await seed(used: now);
     await mount(tester);

@@ -143,4 +143,8 @@ class NativeService {
 
   static Future<void> openFullScreenSettings() =>
       _channel.invokeMethod('openFullScreenSettings');
+
+  /// Asks Android to stop battery-optimizing the app.
+  static Future<void> requestBatteryExemption() =>
+      _channel.invokeMethod('requestBatteryExemption');
 }

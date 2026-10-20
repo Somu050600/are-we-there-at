@@ -10,15 +10,50 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+/**
+ * How often and how precisely to ask for location. Low accuracy uses Wi-Fi and
+ * cell towers instead of GPS: far cheaper, but off by up to a few kilometres.
+ */
+data class LocationPlan(val intervalMillis: Long, val highAccuracy: Boolean)
+
 /** Straight-line trip calculations; road distance is out of scope. */
 object TripMath {
     private const val EARTH_RADIUS_METERS = 6_371_008.8
-    const val NEAR_METERS = 2_000.0
-    private const val FAR_INTERVAL_MILLIS = 30_000L
-    private const val NEAR_INTERVAL_MILLIS = 5_000L
-    const val FAST_INTERVAL_MILLIS = 1_000L
     const val MIN_ETA_SPEED = 0.7 // m/s, walking pace
     private const val SPEED_SMOOTHING = 0.3
+
+    val FAST_PLAN = LocationPlan(1_000L, highAccuracy = true)
+    val NEAR_PLAN = LocationPlan(5_000L, highAccuracy = true)
+
+    /**
+     * Tiers by distance to the edge of the arrival radius: the closest tier whose
+     * limit is at or beyond the distance applies. Each interval is short enough
+     * that at 180 km/h the next fix still lands outside the radius, and low
+     * accuracy is only used where its error is far smaller than the distance left.
+     */
+    private val TIERS = listOf(
+        2_000.0 to NEAR_PLAN,
+        10_000.0 to LocationPlan(30_000L, highAccuracy = true),
+        50_000.0 to LocationPlan(60_000L, highAccuracy = false),
+        100_000.0 to LocationPlan(3 * 60_000L, highAccuracy = false),
+    )
+    private val FARTHEST_PLAN = LocationPlan(5 * 60_000L, highAccuracy = false)
+
+    /**
+     * [edgeMeters] is the distance left to the arrival radius, or null before the
+     * first fix (near rate, for a quick first fix). [fast] is the direction
+     * screen. Without [lowPowerAllowed] every tier uses GPS.
+     */
+    fun locationPlan(edgeMeters: Double?, fast: Boolean = false, lowPowerAllowed: Boolean = true): LocationPlan {
+        if (fast) return FAST_PLAN
+        if (edgeMeters == null) return NEAR_PLAN
+        val plan = TIERS.firstOrNull { (limit, _) -> edgeMeters <= limit }?.second ?: FARTHEST_PLAN
+        return if (lowPowerAllowed) plan else plan.copy(highAccuracy = true)
+    }
+
+    /** Distance to the radius edge, counting the fix's error against us. */
+    fun edgeMeters(distance: Double, radius: Double, accuracy: Double?): Double =
+        distance - radius - (accuracy ?: 0.0)
 
     fun distanceMeters(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
         val dLat = Math.toRadians(lat2 - lat1)
@@ -48,9 +83,6 @@ object TripMath {
         if (start <= 0) 1.0 else (1 - current / start).coerceIn(0.0, 1.0)
 
     fun isArrived(distance: Double, radius: Double) = distance <= radius
-
-    fun updateIntervalMillis(distance: Double) =
-        if (distance > NEAR_METERS) FAR_INTERVAL_MILLIS else NEAR_INTERVAL_MILLIS
 
     fun formatDistance(meters: Double): String =
         if (meters >= 1_000) String.format(Locale.US, "%.1f km", meters / 1_000) else "${meters.roundToInt()} m"

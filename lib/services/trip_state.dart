@@ -61,7 +61,11 @@ class TripState {
 }
 
 class AlarmSettings {
-  const AlarmSettings({required this.enabled, required this.allowed});
+  const AlarmSettings({
+    required this.enabled,
+    required this.allowed,
+    this.batteryUnrestricted = true,
+  });
 
   static const defaults = AlarmSettings(enabled: true, allowed: true);
 
@@ -71,11 +75,16 @@ class AlarmSettings {
   /// Whether Android currently permits full-screen alerts for the app.
   final bool allowed;
 
+  /// Whether the app is exempt from battery optimization, which can otherwise
+  /// stop tracking on long trips.
+  final bool batteryUnrestricted;
+
   factory AlarmSettings.fromMap(Object? raw) {
     if (raw is! Map) return defaults;
     return AlarmSettings(
       enabled: raw['fullScreen'] as bool? ?? true,
       allowed: raw['fullScreenAllowed'] as bool? ?? true,
+      batteryUnrestricted: raw['batteryUnrestricted'] as bool? ?? true,
     );
   }
 }

@@ -1,30 +1,49 @@
 package com.example.are_we_there_yet
 
+import android.app.AlarmManager
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
+import androidx.core.content.ContextCompat
 
 /** Foreground location service that tracks one trip and rings on arrival. */
 class TripService : Service() {
     private lateinit var store: TripStore
     private lateinit var source: LocationSource
-    private var interval: Long? = null
+    private var plan: LocationPlan? = null
     private var lastDistance: Double? = null
     private var lastFix: Fix? = null
     private var speed: Double? = null
     /** Set while the direction screen is open. */
     private var fast = false
+    /** Set once low-accuracy updates failed; GPS is used from then on. */
+    private var lowPowerFailed = false
+    private val batteryWatch = BatteryWatch()
+    private val batteryReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            BatteryLevel.fromIntent(intent)?.let(::onBattery)
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
         store = TripStore(this)
         source = sourceFactory(this)
         isRunning = true
+        // Sticky: delivers the current level right away, then every change.
+        ContextCompat.registerReceiver(
+            this, batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -37,6 +56,7 @@ class TripService : Service() {
                 ACTION_RESUME -> resume()
                 ACTION_STOP -> stop()
                 ACTION_FAST -> setFast(intent.getBooleanExtra(EXTRA_ENABLED, false))
+                ACTION_LOW_POWER_TIMEOUT -> fallBackToGps("No low-accuracy fix in time")
                 // ACTION_RECOVER from the app, or a null intent when the system
                 // restarts the service after the process died.
                 else -> store.active()?.let(::recover) ?: stop()
@@ -49,7 +69,8 @@ class TripService : Service() {
     }
 
     override fun onDestroy() {
-        source.stop()
+        stopTracking()
+        unregisterReceiver(batteryReceiver)
         isRunning = false
         super.onDestroy()
     }
@@ -61,17 +82,19 @@ class TripService : Service() {
         lastFix = null
         speed = null
         goForeground(trip)
-        track(intervalFor(0.0)) // near-rate until the first fix
+        checkBattery()
+        track(planFor(trip)) // near rate until the first fix
         publish(TripStatus.TRACKING, trip)
     }
 
     private fun recover(trip: Trip) {
         clearRestartNotice()
         goForeground(trip)
+        checkBattery()
         if (trip.paused) {
             publish(TripStatus.PAUSED, trip)
         } else {
-            track(intervalFor(0.0))
+            track(planFor(trip))
             publish(TripStatus.TRACKING, trip)
         }
     }
@@ -83,15 +106,14 @@ class TripService : Service() {
             if (!isTracking()) stopSelf()
             return
         }
-        if (!trip.paused) track(intervalFor(lastDistance ?: 0.0))
+        if (!trip.paused) track(planFor(trip))
     }
 
-    private fun isTracking() = interval != null
+    private fun isTracking() = plan != null
 
     private fun pause() {
         val trip = store.active() ?: return stop()
-        source.stop()
-        interval = null
+        stopTracking()
         val paused = trip.copy(paused = true)
         store.saveActive(paused)
         notifyProgress(paused)
@@ -103,13 +125,13 @@ class TripService : Service() {
         val resumed = trip.copy(paused = false)
         store.saveActive(resumed)
         goForeground(resumed)
-        track(intervalFor(lastDistance ?: 0.0))
+        track(planFor(resumed))
         publish(TripStatus.TRACKING, resumed)
     }
 
     private fun stop() {
-        source.stop()
-        interval = null
+        stopTracking()
+        notificationManager().cancel(TripNotifications.BATTERY_ID)
         lastDistance = null
         lastFix = null
         speed = null
@@ -132,17 +154,19 @@ class TripService : Service() {
         if (sample != null) speed = TripMath.smoothSpeed(speed, sample)
         lastFix = fix
         lastDistance = distance
-        if (TripMath.isArrived(distance, trip.radius)) return arrive(trip)
+        // A low-accuracy fix can be kilometres off; it switches to GPS (the near
+        // plan, since its error reaches the radius) and the next fix decides.
+        if (TripMath.isArrived(distance, trip.radius) && plan?.highAccuracy != false) return arrive(trip)
         val current = if (trip.startDistance == null) trip.copy(startDistance = distance).also(store::saveActive) else trip
         notifyProgress(current)
         publish(TripStatus.TRACKING, current)
-        val next = intervalFor(distance)
-        if (next != interval) track(next)
+        val next = planFor(current)
+        if (next != plan) track(next) else watchLowPower(next)
     }
 
     private fun arrive(trip: Trip) {
-        source.stop()
-        interval = null
+        stopTracking()
+        notificationManager().cancel(TripNotifications.BATTERY_ID)
         store.clearActive()
         val fullScreen = store.fullScreenEnabled && TripNotifications.canUseFullScreen(this)
         // Remove the progress notification first so the alarm is the only one up.
@@ -152,9 +176,68 @@ class TripService : Service() {
         TripEvents.publish(TripSnapshot(TripStatus.ARRIVED, trip, lastDistance, 1.0, lastFix, speed, null, 0.0))
     }
 
-    private fun track(intervalMillis: Long) {
-        interval = intervalMillis
-        source.start(intervalMillis, ::onLocation)
+    private fun track(next: LocationPlan) {
+        plan = next
+        watchLowPower(next)
+        source.start(next, ::onLocation) { fallBackToGps("Low-accuracy location unavailable") }
+    }
+
+    private fun stopTracking() {
+        source.stop()
+        plan = null
+        watchLowPower(null)
+    }
+
+    /**
+     * Low-accuracy updates need network location, which may be off or have no
+     * signal; then no fixes arrive. Every fix restarts this alarm, so a quiet
+     * spell of one interval plus a grace period falls back to GPS. An alarm,
+     * not a timer: timers stop while the phone sleeps, and with no fixes
+     * nothing would wake it.
+     */
+    private fun watchLowPower(current: LocationPlan?) {
+        val alarms = getSystemService(AlarmManager::class.java)
+        val timeout = PendingIntent.getService(
+            this, ACTION_LOW_POWER_TIMEOUT.hashCode(), actionIntent(this, ACTION_LOW_POWER_TIMEOUT),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        alarms.cancel(timeout)
+        if (current?.highAccuracy == false) {
+            alarms.setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + current.intervalMillis + LOW_POWER_GRACE_MILLIS,
+                timeout,
+            )
+        }
+    }
+
+    private fun fallBackToGps(reason: String) {
+        val current = plan
+        if (current == null) {
+            // A late alarm that started a fresh service with no trip.
+            if (store.active() == null) stop()
+            return
+        }
+        if (current.highAccuracy) return
+        Log.w(TAG, "$reason; switching to GPS")
+        lowPowerFailed = true
+        store.active()?.takeUnless { it.paused }?.let { track(planFor(it)) }
+    }
+
+    /** The receiver may report before the trip is stored, so check once it is. */
+    private fun checkBattery() {
+        val battery = getSystemService(BatteryManager::class.java) ?: return
+        val percent = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        // Unsupported devices report Integer.MIN_VALUE, or 0 before Android 9.
+        if (percent in 1..100) onBattery(BatteryLevel(percent, battery.isCharging))
+    }
+
+    private fun onBattery(level: BatteryLevel) {
+        if (level.charging) notificationManager().cancel(TripNotifications.BATTERY_ID)
+        val trip = store.active() ?: return
+        val threshold = batteryWatch.update(level) ?: return
+        Log.i(TAG, "Battery at ${level.percent}% (below $threshold%) during a trip")
+        notificationManager().notify(TripNotifications.BATTERY_ID, TripNotifications.lowBattery(this, trip, level.percent))
     }
 
     private fun goForeground(trip: Trip) {
@@ -176,8 +259,11 @@ class TripService : Service() {
         return TripMath.progress(trip.startDistance ?: distance, distance)
     }
 
-    private fun intervalFor(distance: Double) =
-        if (fast) TripMath.FAST_INTERVAL_MILLIS else TripMath.updateIntervalMillis(distance)
+    private fun planFor(trip: Trip) = TripMath.locationPlan(
+        edgeMeters = lastDistance?.let { TripMath.edgeMeters(it, trip.radius, lastFix?.accuracyMeters) },
+        fast = fast,
+        lowPowerAllowed = !lowPowerFailed,
+    )
 
     private fun publish(status: TripStatus, trip: Trip) {
         val fix = lastFix
@@ -211,7 +297,9 @@ class TripService : Service() {
         const val ACTION_STOP = "com.example.are_we_there_yet.trip.STOP"
         const val ACTION_RECOVER = "com.example.are_we_there_yet.trip.RECOVER"
         const val ACTION_FAST = "com.example.are_we_there_yet.trip.FAST"
+        const val ACTION_LOW_POWER_TIMEOUT = "com.example.are_we_there_yet.trip.LOW_POWER_TIMEOUT"
         private const val EXTRA_ENABLED = "enabled"
+        internal const val LOW_POWER_GRACE_MILLIS = 60_000L
 
         /** False after a force-stop, update or reboot killed the service. */
         @Volatile var isRunning = false

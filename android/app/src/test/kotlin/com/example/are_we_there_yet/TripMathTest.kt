@@ -27,10 +27,40 @@ class TripMathTest {
     }
 
     @Test
-    fun `updates are frequent only near the destination`() {
-        assertEquals(30_000L, TripMath.updateIntervalMillis(2_500.0))
-        assertEquals(5_000L, TripMath.updateIntervalMillis(2_000.0))
-        assertEquals(5_000L, TripMath.updateIntervalMillis(150.0))
+    fun `updates slow down and drop GPS with distance`() {
+        fun plan(edgeKm: Double) = TripMath.locationPlan(edgeKm * 1_000)
+        assertEquals(LocationPlan(5_000L, highAccuracy = true), plan(-0.1))
+        assertEquals(LocationPlan(5_000L, highAccuracy = true), plan(2.0))
+        assertEquals(LocationPlan(30_000L, highAccuracy = true), plan(2.5))
+        assertEquals(LocationPlan(30_000L, highAccuracy = true), plan(10.0))
+        assertEquals(LocationPlan(60_000L, highAccuracy = false), plan(10.5))
+        assertEquals(LocationPlan(180_000L, highAccuracy = false), plan(60.0))
+        assertEquals(LocationPlan(300_000L, highAccuracy = false), plan(400.0))
+    }
+
+    @Test
+    fun `no tier can be crossed into the radius between two fixes at 180 km per h`() {
+        val speed = 50.0 // m/s
+        for (edge in generateSequence(2_000.5) { it * 1.1 }.takeWhile { it < 1_000_000 }) {
+            val plan = TripMath.locationPlan(edge)
+            assertTrue("edge $edge", edge - speed * plan.intervalMillis / 1_000 > 0)
+        }
+    }
+
+    @Test
+    fun `first fix, direction screen and failed low power use GPS`() {
+        assertEquals(TripMath.NEAR_PLAN, TripMath.locationPlan(null))
+        assertEquals(TripMath.FAST_PLAN, TripMath.locationPlan(400_000.0, fast = true))
+        assertEquals(
+            LocationPlan(300_000L, highAccuracy = true),
+            TripMath.locationPlan(400_000.0, lowPowerAllowed = false),
+        )
+    }
+
+    @Test
+    fun `edge distance counts the radius and the fix error`() {
+        assertEquals(9_500.0, TripMath.edgeMeters(10_000.0, 200.0, 300.0), 1e-9)
+        assertEquals(9_800.0, TripMath.edgeMeters(10_000.0, 200.0, null), 1e-9)
     }
 
     @Test

@@ -34,6 +34,13 @@ void main() {
     final settings = AlarmSettings.fromMap({'fullScreen': false});
     expect(settings.enabled, isFalse);
     expect(settings.allowed, isTrue);
+    expect(settings.batteryUnrestricted, isTrue);
+    expect(
+      AlarmSettings.fromMap({
+        'batteryUnrestricted': false,
+      }).batteryUnrestricted,
+      isFalse,
+    );
   });
 
   test('parses position, speed, bearing and eta', () {
