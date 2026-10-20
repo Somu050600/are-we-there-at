@@ -18,7 +18,7 @@ arrival radius: `distance − radius − fix accuracy`. Counting the radius make
 large radius reach the near rate before the alarm rings, not after; counting
 the fix's error keeps a rough fix from looking farther away than it may be.
 
-| Distance to the radius edge | Interval | Accuracy |
+| Distance to the radius edge | Minimum interval | Accuracy |
 | --- | --- | --- |
 | Before the first fix | 5 s | GPS |
 | up to 2 km | 5 s | GPS |
@@ -30,6 +30,13 @@ the fix's error keeps a rough fix from looking farther away than it may be.
 
 - Each interval is short enough that at 180 km/h the next fix still lands
   outside the radius (tested in `TripMathTest`).
+- **Speed.** The table gives minimums. The interval is lengthened to the time
+  it would take to cover *half* the distance left, accelerating at 2 m/s² from
+  the current smoothed speed up to a top speed of 1.5× the fastest speed seen
+  this trip (90–300 km/h; 180 km/h before any speed is known), capped at
+  10 minutes. Halving leaves room for going twice as fast as assumed, such as
+  boarding a train after a bus. A stopped train 10 km out checks every
+  3.6 minutes instead of every minute; 60 km out, every 10 minutes.
 - Balanced fixes can be off by a few kilometres, so they are only used 10 km
   or more from the edge. A balanced fix inside the radius does not ring: it
   switches to the near plan and the next GPS fix decides.

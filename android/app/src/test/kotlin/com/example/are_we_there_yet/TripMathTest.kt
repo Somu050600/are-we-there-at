@@ -28,18 +28,58 @@ class TripMathTest {
 
     @Test
     fun `updates slow down and drop GPS with distance`() {
+        // Speed unknown: half the distance left at 180 km/h, at least the tier's.
         fun plan(edgeKm: Double) = TripMath.locationPlan(edgeKm * 1_000)
         assertEquals(LocationPlan(5_000L, highAccuracy = true), plan(-0.1))
-        assertEquals(LocationPlan(5_000L, highAccuracy = true), plan(2.0))
+        assertEquals(LocationPlan(10_000L, highAccuracy = true), plan(1.0))
         assertEquals(LocationPlan(30_000L, highAccuracy = true), plan(2.5))
-        assertEquals(LocationPlan(30_000L, highAccuracy = true), plan(10.0))
-        assertEquals(LocationPlan(60_000L, highAccuracy = false), plan(10.5))
-        assertEquals(LocationPlan(180_000L, highAccuracy = false), plan(60.0))
-        assertEquals(LocationPlan(300_000L, highAccuracy = false), plan(400.0))
+        assertEquals(LocationPlan(100_000L, highAccuracy = true), plan(10.0))
+        assertEquals(LocationPlan(105_000L, highAccuracy = false), plan(10.5))
+        assertEquals(LocationPlan(600_000L, highAccuracy = false), plan(60.0))
+        assertEquals(LocationPlan(TripMath.MAX_INTERVAL_MILLIS, highAccuracy = false), plan(400.0))
     }
 
     @Test
-    fun `no tier can be crossed into the radius between two fixes at 180 km per h`() {
+    fun `a slow trip checks less often than a fast one`() {
+        val stopped = TripMath.locationPlan(10_500.0, speedMps = 0.0, maxSpeedMps = 0.0)
+        // Accelerating at 2 m/s² to 90 km/h: 12.5 s, then 25 m/s for the rest of 5.25 km.
+        assertEquals(216_250L, stopped.intervalMillis)
+        val fast = TripMath.locationPlan(10_500.0, speedMps = 40.0, maxSpeedMps = 40.0)
+        assertTrue(fast.intervalMillis < stopped.intervalMillis)
+        assertEquals(61_838L, TripMath.locationPlan(10_500.0, speedMps = 80.0, maxSpeedMps = 80.0).intervalMillis)
+    }
+
+    @Test
+    fun `twice the assumed top speed still cannot reach the radius before the next fix`() {
+        for (edge in generateSequence(50.0) { it * 1.3 }.takeWhile { it < 1_000_000 }) {
+            for (max in listOf(null, 0.0, 10.0, 25.0, 40.0)) {
+                for (speed in listOf(null, 0.0, 5.0, 20.0, 40.0)) {
+                    val plan = TripMath.locationPlan(edge, speedMps = speed, maxSpeedMps = max)
+                    val top = TripMath.topSpeed(max)
+                    val reach = TripMath.secondsToCover(edge, speed ?: top, 2 * top)
+                    val tierMinimum = TripMath.locationPlan(edge, speedMps = 1_000.0, maxSpeedMps = 1_000.0)
+                    if (plan.intervalMillis > tierMinimum.intervalMillis) {
+                        assertTrue("edge $edge max $max speed $speed", reach * 1_000 >= plan.intervalMillis - 1)
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `covering a distance accelerates up to the top speed`() {
+        assertEquals(10.0, TripMath.secondsToCover(100.0, 0.0, 25.0), 1e-9) // a t² / 2
+        assertEquals(12.5 + (1_000 - 156.25) / 25, TripMath.secondsToCover(1_000.0, 0.0, 25.0), 1e-9)
+        assertEquals(40.0, TripMath.secondsToCover(1_000.0, 25.0, 25.0), 1e-9)
+        assertEquals(0.0, TripMath.secondsToCover(-5.0, 0.0, 25.0), 1e-9)
+        assertEquals(50.0, TripMath.topSpeed(null), 1e-9)
+        assertEquals(25.0, TripMath.topSpeed(3.0), 1e-9)
+        assertEquals(45.0, TripMath.topSpeed(30.0), 1e-9)
+        assertEquals(85.0, TripMath.topSpeed(90.0), 1e-9)
+    }
+
+    @Test
+    fun `with speed unknown no fix can be skipped at 180 km per h`() {
         val speed = 50.0 // m/s
         for (edge in generateSequence(2_000.5) { it * 1.1 }.takeWhile { it < 1_000_000 }) {
             val plan = TripMath.locationPlan(edge)
@@ -52,7 +92,7 @@ class TripMathTest {
         assertEquals(TripMath.NEAR_PLAN, TripMath.locationPlan(null))
         assertEquals(TripMath.FAST_PLAN, TripMath.locationPlan(400_000.0, fast = true))
         assertEquals(
-            LocationPlan(300_000L, highAccuracy = true),
+            LocationPlan(TripMath.MAX_INTERVAL_MILLIS, highAccuracy = true),
             TripMath.locationPlan(400_000.0, lowPowerAllowed = false),
         )
     }

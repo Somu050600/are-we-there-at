@@ -24,6 +24,8 @@ class TripService : Service() {
     private var lastDistance: Double? = null
     private var lastFix: Fix? = null
     private var speed: Double? = null
+    /** Fastest smoothed speed this trip; bounds how fast the trip may go. */
+    private var maxSpeed: Double? = null
     /** Set while the direction screen is open. */
     private var fast = false
     /** Location was reported unavailable and no fix came since. */
@@ -83,6 +85,7 @@ class TripService : Service() {
         lastDistance = null
         lastFix = null
         speed = null
+        maxSpeed = null
         waitingForSignal = false
         goForeground(trip)
         checkBattery()
@@ -139,6 +142,7 @@ class TripService : Service() {
         lastDistance = null
         lastFix = null
         speed = null
+        maxSpeed = null
         store.clearActive()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -155,7 +159,11 @@ class TripService : Service() {
             val seconds = (fix.timeMillis - it.timeMillis) / 1000.0
             if (seconds > 0) TripMath.distanceMeters(it.lat, it.lng, fix.lat, fix.lng) / seconds else null
         }
-        if (sample != null) speed = TripMath.smoothSpeed(speed, sample)
+        if (sample != null) {
+            val smoothed = TripMath.smoothSpeed(speed, sample)
+            speed = smoothed
+            maxSpeed = maxOf(maxSpeed ?: 0.0, smoothed)
+        }
         lastFix = fix
         lastDistance = distance
         waitingForSignal = false
@@ -280,6 +288,8 @@ class TripService : Service() {
         edgeMeters = lastDistance?.let { TripMath.edgeMeters(it, trip.radius, lastFix?.accuracyMeters) },
         fast = fast,
         lowPowerAllowed = !lowPowerFailed,
+        speedMps = speed,
+        maxSpeedMps = maxSpeed,
     )
 
     private fun publish(status: TripStatus, trip: Trip) {

@@ -127,9 +127,22 @@ class TripServiceTest {
     fun `far away checks less often without GPS`() {
         started()
         veryFar()
-        assertEquals(LocationPlan(60_000L, highAccuracy = false), source.plan)
-        source.at(12.9955, 77.5710) // ~1.9 km
-        assertEquals(LocationPlan(5_000L, highAccuracy = true), source.plan)
+        assertFalse(source.plan!!.highAccuracy)
+        assertTrue(source.interval!! >= 60_000L)
+        source.at(12.9955, 77.5710) // ~1.9 km, very fast: GPS every few seconds
+        assertTrue(source.plan!!.highAccuracy)
+        assertTrue(source.interval!! <= 10_000L)
+    }
+
+    @Test
+    fun `standing still far away checks less often than moving`() {
+        started()
+        veryFar()
+        source.at(13.10, 77.5710) // not moving: speed 0
+        val stopped = source.interval!!
+        source.at(13.08, 77.5710, speed = 40.0)
+        assertTrue(source.interval!! < stopped)
+        assertTrue(stopped <= TripMath.MAX_INTERVAL_MILLIS)
     }
 
     @Test
@@ -141,29 +154,33 @@ class TripServiceTest {
         veryFar() // each fix replaces the alarm
         assertEquals(1, fallbackAlarms())
 
+        val rough = source.plan!!
         command(controller, TripService.actionIntent(context, TripService.ACTION_LOW_POWER_TIMEOUT))
-        assertEquals(LocationPlan(60_000L, highAccuracy = true), source.plan)
+        assertEquals(rough.copy(highAccuracy = true), source.plan)
         assertEquals(0, fallbackAlarms())
         veryFar()
-        assertEquals(LocationPlan(60_000L, highAccuracy = true), source.plan)
+        assertEquals(rough.copy(highAccuracy = true), source.plan)
     }
 
     @Test
     fun `unavailable low-accuracy location falls back to GPS at once`() {
         started()
         veryFar()
+        val rough = source.plan!!
         source.unavailable!!.invoke()
-        assertEquals(LocationPlan(60_000L, highAccuracy = true), source.plan)
+        assertEquals(rough.copy(highAccuracy = true), source.plan)
     }
 
     @Test
     fun `unavailable GPS location changes nothing`() {
         started()
         far()
+        val gps = source.plan!!
+        assertTrue(gps.highAccuracy)
         source.unavailable!!.invoke()
-        assertEquals(TripMath.NEAR_PLAN, source.plan)
+        assertEquals(gps, source.plan)
         veryFar()
-        assertEquals(LocationPlan(60_000L, highAccuracy = false), source.plan)
+        assertFalse(source.plan!!.highAccuracy)
     }
 
     @Test
@@ -344,14 +361,14 @@ class TripServiceTest {
     @Test
     fun `fast updates while the direction screen is open`() {
         val controller = started()
-        veryFar() // normally 60 s
-        assertEquals(60_000L, source.interval)
+        veryFar() // normally a minute or more
+        assertTrue(source.interval!! >= 60_000L)
         command(controller, TripService.fastIntent(context, true))
         assertEquals(TripMath.FAST_PLAN, source.plan)
         source.at(13.09, 77.5710)
         assertEquals(TripMath.FAST_PLAN, source.plan)
         command(controller, TripService.fastIntent(context, false))
-        assertEquals(60_000L, source.interval)
+        assertTrue(source.interval!! >= 60_000L)
     }
 
     @Test
