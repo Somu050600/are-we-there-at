@@ -96,6 +96,25 @@ void main() {
     expect(old.lastUsedAt, isNull);
   });
 
+  test('version three upgrade adds the time alert, off', () async {
+    await db.close();
+    db = upgraded([
+      _v1Table,
+      'ALTER TABLE alarms ADD COLUMN shared_link TEXT',
+      "ALTER TABLE alarms ADD COLUMN icon TEXT NOT NULL DEFAULT 'navigation'",
+      'ALTER TABLE alarms ADD COLUMN last_used_at INTEGER',
+      "INSERT INTO alarms VALUES ('v3', 'Office', 12.9, 77.6, 300, 1700000000, 0, NULL, 'work', 1700000500)",
+      'PRAGMA user_version = 3',
+    ]);
+    final old = (await db.getAllDestinations()).single;
+    expect(old.icon, DestinationIcon.work);
+    expect(old.alertMinutes, isNull);
+    await db.updateDestination(old.copyWith(alertMinutes: () => 15));
+    expect((await db.getDestination('v3'))!.alertMinutes, 15);
+    await db.updateDestination(old.copyWith(alertMinutes: () => null));
+    expect((await db.getDestination('v3'))!.alertMinutes, isNull);
+  });
+
   test('unknown stored icon names fall back to navigation', () async {
     await db.insertDestination(destination('a'));
     await db.customStatement("UPDATE alarms SET icon = 'rocket'");

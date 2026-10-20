@@ -11,20 +11,28 @@ arrive. Requires Google Play Services.
    HERE or Yandex link, a `geo:` URI, a plus code, or coordinates such as
    `12.97, 77.59` or `12°58'17"N 77°35'40"E`. Surrounding text is ignored. A
    sheet opens with the coordinates.
-2. Name it, pick an icon and choose a radius from 50 m to 10 km.
+2. Name it, pick an icon and choose a radius from 50 m to 10 km. Optionally
+   have it also ring 5, 10, 15 or 30 minutes before arriving.
 3. Tap **Start** to save and start the trip, or **Save** to keep it for later.
    Allow precise location and notifications when asked.
 4. While travelling, the notification shows the distance left and progress, with
    **Pause** and **Stop Tracking**. The Home screen shows the same.
-5. On arrival the alarm rings until stopped. With **Full-screen alarm** on, it
-   also shows a full-screen page over the lock screen (Android 14+ may ask you to
-   allow full-screen notifications).
+5. On arrival the alarm rings until stopped, or snoozed for 5 minutes. With
+   **Full-screen alarm** on, it also shows a full-screen page over the lock
+   screen (Android 14+ may ask you to allow full-screen notifications).
+
+**Settings** (gear on Home) has the full-screen alarm, **Vibrate only**, battery
+optimization and, on Xiaomi, Samsung, OPPO, vivo and Huawei phones, a shortcut
+to the maker's own background-app setting. For long or overnight trips, allow
+the app to run without battery restrictions; a long trip asks once.
 
 Home lists saved destinations with when each was last used; ▶ starts a trip and
 tapping a card edits or deletes it. The top card restarts the last trip. One
 trip runs at a time; starting another replaces it.
 
-Location is only used during a trip. If the phone restarts or the app is updated
+Location is only used during a trip, and less often the farther away and
+slower the trip is (see the
+[battery design](docs/superpowers/specs/2026-10-20-battery-design.md)). If the phone restarts or the app is updated
 mid-trip, a notification asks you to reopen the app, which resumes the trip.
 
 Google Maps short links need a network connection. When a share names a place
@@ -40,7 +48,7 @@ radius with enough travel buffer and complete the
 ## Development
 
 Flutter 3.38.9 / Dart 3.10.8, Java 17, Android SDK 36. Flutter owns the UI and
-Drift SQLite database of destinations (schema version 3; older databases are
+Drift SQLite database of destinations (schema version 4; older databases are
 migrated). Kotlin handles incoming shares, permissions, the foreground trip
 service, notifications and the arrival alarm.
 

@@ -13,6 +13,8 @@ class TripState {
     this.speedMps,
     this.bearingDegrees,
     this.etaSeconds,
+    this.fixTime,
+    this.waitingForSignal = false,
   });
 
   static const idle = TripState(status: TripStatus.idle);
@@ -33,6 +35,12 @@ class TripState {
   /// From the last fix to the destination, clockwise from north.
   final double? bearingDegrees;
   final double? etaSeconds;
+
+  /// When the last fix was taken.
+  final DateTime? fixTime;
+
+  /// Location is unavailable right now (tunnel, no sky view).
+  final bool waitingForSignal;
 
   bool get isActive =>
       status == TripStatus.tracking || status == TripStatus.paused;
@@ -56,12 +64,22 @@ class TripState {
       speedMps: number(raw['speedMps']),
       bearingDegrees: number(raw['bearingDegrees']),
       etaSeconds: number(raw['etaSeconds']),
+      fixTime: switch (number(raw['fixTimeMillis'])) {
+        final millis? => DateTime.fromMillisecondsSinceEpoch(millis.round()),
+        null => null,
+      },
+      waitingForSignal: raw['waitingForSignal'] == true,
     );
   }
 }
 
 class AlarmSettings {
-  const AlarmSettings({required this.enabled, required this.allowed});
+  const AlarmSettings({
+    required this.enabled,
+    required this.allowed,
+    this.batteryUnrestricted = true,
+    this.vibrateOnly = false,
+  });
 
   static const defaults = AlarmSettings(enabled: true, allowed: true);
 
@@ -71,11 +89,20 @@ class AlarmSettings {
   /// Whether Android currently permits full-screen alerts for the app.
   final bool allowed;
 
+  /// Whether the app is exempt from battery optimization, which can otherwise
+  /// stop tracking on long trips.
+  final bool batteryUnrestricted;
+
+  /// Alarms vibrate without sound.
+  final bool vibrateOnly;
+
   factory AlarmSettings.fromMap(Object? raw) {
     if (raw is! Map) return defaults;
     return AlarmSettings(
       enabled: raw['fullScreen'] as bool? ?? true,
       allowed: raw['fullScreenAllowed'] as bool? ?? true,
+      batteryUnrestricted: raw['batteryUnrestricted'] as bool? ?? true,
+      vibrateOnly: raw['vibrateOnly'] as bool? ?? false,
     );
   }
 }

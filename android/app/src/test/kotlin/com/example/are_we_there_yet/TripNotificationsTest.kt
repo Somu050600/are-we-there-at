@@ -41,6 +41,33 @@ class TripNotificationsTest {
     }
 
     @Test
+    fun `header shows when the last fix was taken`() {
+        val fresh = TripNotifications.progress(context, trip, 4_230.0, 0.6, fixTimeMillis = 1_760_000_000_000)
+        assertEquals(1_760_000_000_000, fresh.`when`)
+        assertTrue(fresh.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+        val first = TripNotifications.progress(context, trip, null, null)
+        assertTrue(!first.extras.getBoolean(Notification.EXTRA_SHOW_WHEN))
+    }
+
+    @Test
+    fun `no signal says so`() {
+        assertEquals(
+            "Waiting for GPS · 4.2 km at last fix",
+            TripNotifications.progress(context, trip, 4_230.0, 0.6, waiting = true).text(),
+        )
+        assertEquals("Waiting for GPS…", TripNotifications.progress(context, trip, null, null, waiting = true).text())
+    }
+
+    @Test
+    fun `time alert rings like the arrival alarm`() {
+        val alert = TripNotifications.timeAlert(context, trip, 10, fullScreen = true)
+        assertEquals("About 10 min to Aurva Bangalore", alert.title())
+        assertEquals(Notification.CATEGORY_ALARM, alert.category)
+        assertTrue(alert.flags and Notification.FLAG_INSISTENT != 0)
+        assertNotNull(alert.fullScreenIntent)
+    }
+
+    @Test
     fun `paused trip offers resume`() {
         val notification = TripNotifications.progress(context, trip.copy(paused = true), 950.0, 0.81)
         assertEquals("Paused · 950 m remaining", notification.text())
@@ -54,9 +81,21 @@ class TripNotificationsTest {
         assertEquals(Notification.CATEGORY_ALARM, plain.category)
         assertTrue(plain.flags and Notification.FLAG_INSISTENT != 0)
         assertNull(plain.fullScreenIntent)
-        assertEquals(listOf("Stop"), plain.actionTitles())
+        assertEquals(listOf("Stop", "Snooze 5 min"), plain.actionTitles())
+        assertEquals(TripNotifications.ARRIVAL_CHANNEL, plain.channelId)
 
         assertNotNull(TripNotifications.arrival(context, trip, fullScreen = true).fullScreenIntent)
+    }
+
+    @Test
+    fun `vibrate only uses the silent alarm channel`() {
+        val quiet = TripNotifications.arrival(context, trip, fullScreen = false, vibrateOnly = true)
+        assertEquals(TripNotifications.ARRIVAL_VIBRATE_CHANNEL, quiet.channelId)
+        assertTrue(quiet.flags and Notification.FLAG_INSISTENT != 0)
+        val channel = manager.getNotificationChannel(TripNotifications.ARRIVAL_VIBRATE_CHANNEL)
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
+        assertNull(channel.sound)
+        assertTrue(channel.shouldVibrate())
     }
 
     @Test

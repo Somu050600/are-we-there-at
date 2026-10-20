@@ -9,6 +9,7 @@ import 'package:are_we_there_yet/db/alarm_database.dart';
 import 'package:are_we_there_yet/models/destination.dart';
 import 'package:are_we_there_yet/services/trip_controller.dart';
 import 'package:are_we_there_yet/services/trip_state.dart';
+import 'package:are_we_there_yet/widgets/destination_tile.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ void main() {
   Object? startError;
   Completer<void>? startGate;
   late bool fullScreenAllowed;
+  late String phoneMaker;
   late List<String> haptics;
 
   // Build fixtures inside each test's FakeAsync zone. Futures created in
@@ -48,6 +50,7 @@ void main() {
     startError = null;
     startGate = null;
     fullScreenAllowed = true;
+    phoneMaker = 'google';
     haptics = [];
     messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
       if (call.method == 'HapticFeedback.vibrate') {
@@ -76,6 +79,13 @@ void main() {
             'fullScreen': call.arguments['enabled'],
             'fullScreenAllowed': fullScreenAllowed,
           };
+        case 'setVibrateOnly':
+          return {
+            'fullScreenAllowed': fullScreenAllowed,
+            'vibrateOnly': call.arguments['enabled'],
+          };
+        case 'getPhoneMaker':
+          return phoneMaker;
       }
       return null;
     });
@@ -162,7 +172,8 @@ void main() {
     await mount(tester);
     expect(find.text('Saved Destinations'), findsOneWidget);
     expect(find.text('No saved destinations yet.'), findsOneWidget);
-    expect(find.text('Full-screen alarm'), findsOneWidget);
+    expect(find.text('Full-screen alarm'), findsNothing);
+    expect(find.byTooltip('Settings'), findsOneWidget);
     expect(find.text('Last Trip'), findsNothing);
     expect(methods(), isNot(contains('startTrip')));
     await finish(tester);
@@ -232,6 +243,26 @@ void main() {
     expect(saved.name, 'Majestic');
     expect(saved.icon, DestinationIcon.shopping);
     expect(saved.radius, greaterThan(200));
+    await finish(tester);
+  });
+
+  appTest('the sheet sets a time alert that Start sends to Android', (
+    tester,
+  ) async {
+    share();
+    await mount(tester);
+    expect(
+      tester
+          .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Off'))
+          .selected,
+      isTrue,
+    );
+    await tester.ensureVisible(find.widgetWithText(ChoiceChip, '10 min'));
+    await tap(tester, find.widgetWithText(ChoiceChip, '10 min'));
+    await tap(tester, find.text('Start'));
+    expect((await db.getAllDestinations()).single.alertMinutes, 10);
+    final start = calls.lastWhere((c) => c.method == 'startTrip');
+    expect(start.arguments['alertMinutes'], 10);
     await finish(tester);
   });
 
@@ -431,6 +462,56 @@ void main() {
     await finish(tester);
   });
 
+  appTest('new fixes rebuild the top card but not the rows', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    final fix = {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 4230.0,
+      'progress': 0.5,
+    };
+    await trip(tester, fix);
+    DestinationTile row() => tester.widget(find.byType(DestinationTile));
+    final before = row();
+    await trip(tester, {...fix, 'distanceMeters': 3900.0, 'progress': 0.55});
+    expect(find.text('3.9 km'), findsOneWidget);
+    expect(identical(row(), before), isTrue);
+    await trip(tester, {...fix, 'state': 'paused'});
+    expect(identical(row(), before), isFalse);
+    await finish(tester);
+  });
+
+  appTest('the card says when tracking has gone quiet', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    final tracking = {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 60000.0,
+      'progress': 0.2,
+    };
+    await trip(tester, {
+      ...tracking,
+      'fixTimeMillis': now
+          .subtract(const Duration(minutes: 1))
+          .millisecondsSinceEpoch,
+    });
+    expect(find.textContaining('Updated'), findsNothing);
+
+    await trip(tester, {
+      ...tracking,
+      'fixTimeMillis': now
+          .subtract(const Duration(minutes: 4))
+          .millisecondsSinceEpoch,
+    });
+    expect(find.text('Updated 4 min ago'), findsOneWidget);
+
+    await trip(tester, {...tracking, 'waitingForSignal': true});
+    expect(find.text('Waiting for GPS…'), findsOneWidget);
+    await finish(tester);
+  });
+
   appTest('tapping a destination edits it in the sheet', (tester) async {
     await seed();
     await mount(tester);
@@ -466,10 +547,102 @@ void main() {
 
   appTest('the full-screen toggle saves the preference', (tester) async {
     await mount(tester);
-    await tap(tester, find.byType(Switch));
+    await tap(tester, find.byTooltip('Settings'));
+    await tap(tester, find.byType(Switch).first);
     final call = calls.lastWhere((c) => c.method == 'setFullScreenAlarm');
     expect(call.arguments, {'enabled': false});
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(tester.widget<Switch>(find.byType(Switch).first).value, isFalse);
+    await finish(tester);
+  });
+
+  appTest('vibrate only is saved from settings', (tester) async {
+    await mount(tester);
+    await tap(tester, find.byTooltip('Settings'));
+    await tap(tester, find.text('Vibrate only'));
+    final call = calls.lastWhere((c) => c.method == 'setVibrateOnly');
+    expect(call.arguments, {'enabled': true});
+    expect(controller.alarmSettings.value.vibrateOnly, isTrue);
+    await finish(tester);
+  });
+
+  appTest('settings show battery status and the phone maker steps', (
+    tester,
+  ) async {
+    phoneMaker = 'xiaomi';
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      batteryUnrestricted: false,
+    );
+    await mount(tester);
+    await tap(tester, find.byTooltip('Settings'));
+    expect(
+      find.text('On. Android may stop tracking on long trips.'),
+      findsOneWidget,
+    );
+    await tap(tester, find.widgetWithText(TextButton, 'Allow'));
+    expect(methods().last, 'requestBatteryExemption');
+    expect(find.text('Xiaomi phones'), findsOneWidget);
+    await tap(tester, find.text('Open settings'));
+    expect(methods().last, 'openPhoneMakerSettings');
+    await finish(tester);
+  });
+
+  appTest('phones without extra restrictions get no maker steps', (
+    tester,
+  ) async {
+    await mount(tester);
+    await tap(tester, find.byTooltip('Settings'));
+    expect(find.text('Open settings'), findsNothing);
+    expect(
+      find.text('Off. Android will not stop the app to save battery.'),
+      findsOneWidget,
+    );
+    await finish(tester);
+  });
+
+  appTest('a long trip asks once for the battery exemption', (tester) async {
+    await seed(used: now);
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      batteryUnrestricted: false,
+    );
+    await mount(tester);
+    final far = {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 60000.0,
+      'progress': 0.1,
+    };
+    await trip(tester, far);
+    expect(find.text('Long trip ahead'), findsOneWidget);
+    await tap(tester, find.widgetWithText(FilledButton, 'Allow'));
+    expect(methods().last, 'requestBatteryExemption');
+    expect(find.text('Long trip ahead'), findsNothing);
+    await trip(tester, {...far, 'distanceMeters': 59000.0});
+    expect(find.text('Long trip ahead'), findsNothing);
+    await finish(tester);
+  });
+
+  appTest('short trips or an exempt app are not asked', (tester) async {
+    await seed(used: now);
+    await mount(tester);
+    final trip60 = {
+      'state': 'tracking',
+      'destinationId': 'one',
+      'distanceMeters': 60000.0,
+      'progress': 0.1,
+    };
+    await trip(tester, trip60);
+    expect(find.text('Long trip ahead'), findsNothing);
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      batteryUnrestricted: false,
+    );
+    await trip(tester, {...trip60, 'distanceMeters': 5000.0});
+    expect(find.text('Long trip ahead'), findsNothing);
     await finish(tester);
   });
 
@@ -482,8 +655,26 @@ void main() {
       allowed: false,
     );
     await mount(tester);
+    await tap(tester, find.byTooltip('Settings'));
     await tap(tester, find.text('Allow in Settings'));
     expect(methods().last, 'openFullScreenSettings');
+    await finish(tester);
+  });
+
+  appTest('battery optimization shows a card that asks for an exemption', (
+    tester,
+  ) async {
+    await mount(tester);
+    expect(find.text('Battery optimization is on'), findsNothing);
+
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      batteryUnrestricted: false,
+    );
+    await tester.pumpAndSettle();
+    await tap(tester, find.text('Allow'));
+    expect(methods().last, 'requestBatteryExemption');
     await finish(tester);
   });
 
@@ -541,8 +732,9 @@ void main() {
     expect(haptics, ['HapticFeedbackType.selectionClick'], reason: 'icon');
     await tap(tester, find.text('Start'));
     expect(haptics.last, 'HapticFeedbackType.lightImpact');
+    await tap(tester, find.byTooltip('Settings'));
     haptics.clear();
-    await tap(tester, find.byType(Switch));
+    await tap(tester, find.byType(Switch).first);
     expect(haptics, ['HapticFeedbackType.selectionClick'], reason: 'switch');
     await finish(tester);
   });

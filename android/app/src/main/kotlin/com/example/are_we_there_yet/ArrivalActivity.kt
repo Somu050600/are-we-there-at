@@ -27,14 +27,16 @@ class ArrivalActivity : Activity() {
             @Suppress("DEPRECATION")
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         }
-        val name = intent.getStringExtra(TripNotifications.EXTRA_NAME) ?: "your destination"
+        val content = AlarmContent.from(intent)
+        val name = content?.name ?: "your destination"
+        val headline = content?.headline ?: "Arrived"
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setBackgroundColor(Color.parseColor("#1B1D22"))
                 setPadding(dp(32), dp(32), dp(32), dp(32))
-                addView(label("Arrived", 20f, "#B9C3DB"))
+                addView(label(headline, 20f, "#B9C3DB"))
                 addView(label(name, 34f, "#FFFFFF"))
                 addView(
                     Button(context).apply {
@@ -50,6 +52,22 @@ class ArrivalActivity : Activity() {
                     },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(48) },
                 )
+                if (content != null) {
+                    addView(
+                        Button(context).apply {
+                            text = "Snooze ${AlarmSnooze.MINUTES} min"
+                            textSize = 18f
+                            isAllCaps = false
+                            setTextColor(Color.parseColor("#B9C3DB"))
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(32).toFloat()
+                                setStroke(dp(2), Color.parseColor("#B9C3DB"))
+                            }
+                            setOnClickListener { AlarmSnooze.snooze(context, content); finish() }
+                        },
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64)).apply { topMargin = dp(16) },
+                    )
+                }
             },
         )
     }

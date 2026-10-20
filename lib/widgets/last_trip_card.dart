@@ -4,6 +4,7 @@ import '../services/trip_state.dart';
 import '../util/direction.dart';
 import '../util/relative_time.dart';
 import 'destination_icon.dart';
+import 'freshness_text.dart';
 
 /// Top card: the running trip with controls, or the last trip to restart.
 class LastTripCard extends StatelessWidget {
@@ -16,9 +17,13 @@ class LastTripCard extends StatelessWidget {
     required this.onResume,
     required this.onStop,
     required this.onOpen,
+    required this.clock,
   });
 
   final TripState trip;
+
+  /// For the "Updated 4 min ago" label; replaced in tests.
+  final DateTime Function() clock;
 
   /// The trip's destination when active, otherwise the last used one.
   final Destination? destination;
@@ -97,6 +102,7 @@ class LastTripCard extends StatelessWidget {
                     ),
                   ),
                 ],
+                FreshnessText(trip: trip, clock: clock),
                 const SizedBox(height: 16),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),

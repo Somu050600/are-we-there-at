@@ -33,6 +33,42 @@ class TripStoreTest {
     }
 
     @Test
+    fun `time alert settings persist and default when missing`() {
+        val trip = Trip("a", "Station", 1.0, 2.0, 100.0, null, false, alertMinutes = 10, alerted = true)
+        TripStore(context).saveActive(trip)
+        assertEquals(trip, TripStore(context).active())
+
+        // Saved by a version without the time alert.
+        context.getSharedPreferences(TripStore.PREFERENCES, 0).edit().putString(
+            "active",
+            """{"id":"a","name":"Station","lat":1,"lng":2,"radius":100,"startDistance":null,"paused":false}""",
+        ).commit()
+        val old = TripStore(context).active()!!
+        assertNull(old.alertMinutes)
+        assertFalse(old.alerted)
+    }
+
+    @Test
+    fun `every instance sees the latest trip despite caching`() {
+        val service = TripStore(context)
+        val activity = TripStore(context)
+        val trip = Trip("a", "Station", 1.0, 2.0, 100.0, null, false)
+        service.saveActive(trip)
+        assertEquals(trip, activity.active())
+        service.saveActive(trip.copy(paused = true))
+        assertTrue(activity.active()!!.paused)
+        service.clearActive()
+        assertNull(activity.active())
+    }
+
+    @Test
+    fun `vibrate only defaults off and persists`() {
+        assertFalse(TripStore(context).vibrateOnly)
+        TripStore(context).vibrateOnly = true
+        assertTrue(TripStore(context).vibrateOnly)
+    }
+
+    @Test
     fun `clearing removes the active trip`() {
         val store = TripStore(context)
         store.saveActive(Trip("a", "Station", 1.0, 2.0, 100.0, null, false))

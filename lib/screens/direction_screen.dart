@@ -39,41 +39,58 @@ class _DirectionScreenState extends State<DirectionScreen> {
   Timer? _compassTimeout;
   double _turns = 0;
   final _alignment = AlignmentTracker();
+  late final AppLifecycleListener _lifecycle;
 
   @override
   void initState() {
     super.initState();
-    NativeService.setFastUpdates(true).catchError((Object _) {});
-    _headingSubscription = (widget.headings ?? NativeService.headings()).listen(
-      (heading) {
-        _heading = heading;
-        _compassTimeout?.cancel();
-        if (_noCompass) setState(() => _noCompass = false);
-        _turn();
-      },
-      onError: (Object _) {
-        if (mounted) setState(() => _noCompass = true);
-      },
-    );
     widget.controller.trip.addListener(_turn);
+    // A locked phone keeps this route open: without this, 1 s GPS and the
+    // compass would run until the trip ends.
+    _lifecycle = AppLifecycleListener(onHide: _sleep, onShow: _wake);
+    _wake();
+    _turn();
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    widget.controller.trip.removeListener(_turn);
+    _sleep();
+    super.dispose();
+  }
+
+  /// Starts 1 s location updates and the compass.
+  void _wake() {
+    NativeService.setFastUpdates(true).catchError((Object _) {});
+    _headingSubscription ??= (widget.headings ?? NativeService.headings())
+        .listen(
+          (heading) {
+            _heading = heading;
+            _compassTimeout?.cancel();
+            if (_noCompass) setState(() => _noCompass = false);
+            _turn();
+          },
+          onError: (Object _) {
+            if (mounted) setState(() => _noCompass = true);
+          },
+        );
     // Some sensors register but never report; say so instead of silently
     // pointing relative to north.
+    _compassTimeout?.cancel();
     _compassTimeout = Timer(const Duration(seconds: 3), () {
       if (mounted && _heading == null) {
         setState(() => _noCompass = true);
         _turn();
       }
     });
-    _turn();
   }
 
-  @override
-  void dispose() {
-    widget.controller.trip.removeListener(_turn);
+  void _sleep() {
     _compassTimeout?.cancel();
     _headingSubscription?.cancel();
+    _headingSubscription = null;
     NativeService.setFastUpdates(false).catchError((Object _) {});
-    super.dispose();
   }
 
   void _turn() {
@@ -116,6 +133,8 @@ class _DirectionScreenState extends State<DirectionScreen> {
             final remaining = formatRemaining(trip.etaSeconds);
             final caption = paused
                 ? 'Paused'
+                : trip.waitingForSignal
+                ? 'Waiting for GPS…'
                 : _noCompass
                 ? 'Compass unavailable · arrow points from north'
                 : null;

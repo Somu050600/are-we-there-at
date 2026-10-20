@@ -26,6 +26,24 @@ distance at which the alarm rang.
 - Force-stop mid-trip, then open the app: the trip resumes.
 - Long trip (30+ min) with battery saver and Doze: note battery use and any
   gaps in updates.
+- Trip to a place 50+ km away: the notification updates every few minutes at
+  first, then more often from 10 km; note battery use per hour. Repeat with
+  Wi-Fi scanning and network location off: updates must continue (GPS
+  fallback after about 2–6 minutes).
+- Time alert of 10 minutes on a 20+ minute ride: "About 10 min to X" rings
+  once with roughly 10 minutes left (note how many), tracking continues and
+  the arrival alarm still rings at the radius.
+- Snooze from the notification and from the full-screen page: the alarm
+  stops and rings again about 5 minutes later. With Vibrate only on, alarms
+  vibrate repeatedly without sound.
+- With battery optimization on, a trip 30+ km away asks once to allow the
+  exemption. On Xiaomi, Samsung, OPPO, vivo or Huawei, Settings → Open
+  settings reaches the maker's background-app screen (note which one).
+- With battery optimization on, Home shows the battery card; **Allow** opens
+  the system dialog and the card disappears after accepting. On Xiaomi, Oppo,
+  Vivo and Samsung also set the app's own battery or autostart setting.
+- Start a trip below 20% battery, unplugged: a "Battery at N%" notice appears;
+  plugging in clears it. Again at 10%.
 - Small screen, large text, landscape, keyboard open in the sheet.
 
 The distance is straight-line, not along roads. A 50 m radius may be smaller

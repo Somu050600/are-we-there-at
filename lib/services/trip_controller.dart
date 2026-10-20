@@ -84,6 +84,10 @@ class TripController {
     alarmSettings.value = await NativeService.setFullScreenAlarm(enabled);
   });
 
+  Future<void> setVibrateOnly(bool enabled) => _run(() async {
+    alarmSettings.value = await NativeService.setVibrateOnly(enabled);
+  });
+
   Future<void> refreshAlarmSettings() => _run(() async {
     alarmSettings.value = await NativeService.getAlarmSettings();
   });
@@ -94,6 +98,7 @@ class TripController {
       lat: destination.latitude,
       lng: destination.longitude,
       radius: destination.radius,
+      alertMinutes: destination.alertMinutes,
     );
     if (await database.getDestination(destination.id) == null) {
       await database.insertDestination(destination);

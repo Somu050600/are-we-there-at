@@ -12,7 +12,14 @@ data class Trip(
     /** Distance at the first location fix; null until then. */
     val startDistance: Double?,
     val paused: Boolean,
-)
+    /** Also ring this many minutes before arriving; null for radius only. */
+    val alertMinutes: Int? = null,
+    /** The time alert has rung. */
+    val alerted: Boolean = false,
+) {
+    /** The time alert, in seconds, while it is still to ring. */
+    val pendingAlertSeconds: Double? get() = alertMinutes?.takeUnless { alerted }?.let { it * 60.0 }
+}
 
 enum class TripStatus { IDLE, TRACKING, PAUSED, ARRIVED }
 
@@ -26,6 +33,8 @@ data class TripSnapshot(
     /** From the last fix to the destination, clockwise from north. */
     val bearing: Double? = null,
     val eta: Double? = null,
+    /** Location is unavailable right now (tunnel, no sky view). */
+    val waitingForSignal: Boolean = false,
 ) {
     fun toMap(): Map<String, Any?> = mapOf(
         "state" to status.name.lowercase(),
@@ -38,6 +47,8 @@ data class TripSnapshot(
         "speedMps" to speed,
         "bearingDegrees" to bearing,
         "etaSeconds" to eta,
+        "fixTimeMillis" to fix?.timeMillis,
+        "waitingForSignal" to waitingForSignal,
     )
 
     companion object {
@@ -49,7 +60,15 @@ data class TripSnapshot(
 class TripStore(context: Context) {
     private val preferences = context.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
-    @Synchronized fun active(): Trip? = preferences.getString(KEY_ACTIVE, null)?.let { raw ->
+    @Synchronized fun active(): Trip? {
+        val raw = preferences.getString(KEY_ACTIVE, null) ?: return null
+        // Read on every fix and battery broadcast; parse only when it changed.
+        // Keyed by the stored text, so it is shared safely by every instance.
+        parsed?.let { (text, trip) -> if (text == raw) return trip }
+        return parse(raw).also { parsed = raw to it }
+    }
+
+    private fun parse(raw: String): Trip? =
         runCatching {
             val json = JSONObject(raw)
             Trip(
@@ -60,9 +79,10 @@ class TripStore(context: Context) {
                 radius = json.getDouble("radius"),
                 startDistance = if (json.isNull("startDistance")) null else json.getDouble("startDistance"),
                 paused = json.getBoolean("paused"),
+                alertMinutes = if (json.isNull("alertMinutes")) null else json.getInt("alertMinutes"),
+                alerted = json.optBoolean("alerted", false),
             )
         }.getOrNull()
-    }
 
     @Synchronized fun saveActive(trip: Trip) {
         val json = JSONObject()
@@ -70,6 +90,8 @@ class TripStore(context: Context) {
             .put("lat", trip.lat).put("lng", trip.lng).put("radius", trip.radius)
             .put("startDistance", trip.startDistance ?: JSONObject.NULL)
             .put("paused", trip.paused)
+            .put("alertMinutes", trip.alertMinutes ?: JSONObject.NULL)
+            .put("alerted", trip.alerted)
         commit { putString(KEY_ACTIVE, json.toString()) }
     }
 
@@ -78,6 +100,11 @@ class TripStore(context: Context) {
     var fullScreenEnabled: Boolean
         @Synchronized get() = preferences.getBoolean(KEY_FULL_SCREEN, true)
         @Synchronized set(value) = commit { putBoolean(KEY_FULL_SCREEN, value) }
+
+    /** Alarms vibrate without sound, e.g. for a quiet carriage. */
+    var vibrateOnly: Boolean
+        @Synchronized get() = preferences.getBoolean(KEY_VIBRATE_ONLY, false)
+        @Synchronized set(value) = commit { putBoolean(KEY_VIBRATE_ONLY, value) }
 
     var legacyCleanupDone: Boolean
         @Synchronized get() = preferences.getBoolean(KEY_LEGACY_CLEANUP, false)
@@ -91,8 +118,10 @@ class TripStore(context: Context) {
 
     companion object {
         internal const val PREFERENCES = "trip_state_v1"
+        @Volatile private var parsed: Pair<String, Trip?>? = null
         private const val KEY_ACTIVE = "active"
         private const val KEY_FULL_SCREEN = "full_screen_alarm"
         private const val KEY_LEGACY_CLEANUP = "legacy_geofences_removed"
+        private const val KEY_VIBRATE_ONLY = "vibrate_only"
     }
 }

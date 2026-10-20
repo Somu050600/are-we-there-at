@@ -52,7 +52,8 @@ exists.
   needed because the service starts while the app is visible.
 - **Location**: Fused provider, high accuracy. Interval 30 s when more than
   2 km away, 5 s within 2 km. (Balanced priority was dropped: it depends on
-  network location, and with that off no fixes arrive.)
+  network location, and with that off no fixes arrive.) Superseded by the
+  distance tiers in `2026-10-20-battery-design.md`.
 - **Progress**: `startDistance` is the first fix's distance.
   `progress = clamp(1 − distance / startDistance, 0, 1)`. Before the first fix
   the notification reads "Calculating…".

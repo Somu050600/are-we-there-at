@@ -64,6 +64,7 @@ class NativeService {
     required double lat,
     required double lng,
     required double radius,
+    int? alertMinutes,
   }) {
     if (id.trim().isEmpty ||
         id.length > 100 ||
@@ -78,6 +79,9 @@ class NativeService {
         'Choose valid coordinates and a radius between 50 m and 10 km.',
       );
     }
+    if (alertMinutes != null && (alertMinutes < 1 || alertMinutes > 120)) {
+      throw ArgumentError('Choose an alert between 1 and 120 minutes.');
+    }
   }
 
   static Future<void> openSettings() => _channel.invokeMethod('openSettings');
@@ -88,6 +92,7 @@ class NativeService {
       lat: destination.latitude,
       lng: destination.longitude,
       radius: destination.radius,
+      alertMinutes: destination.alertMinutes,
     );
     await _channel.invokeMethod('startTrip', {
       'id': destination.id,
@@ -95,6 +100,7 @@ class NativeService {
       'lat': destination.latitude,
       'lng': destination.longitude,
       'radius': destination.radius,
+      'alertMinutes': destination.alertMinutes,
     });
   }
 
@@ -125,6 +131,21 @@ class NativeService {
         }),
       );
 
+  static Future<AlarmSettings> setVibrateOnly(bool enabled) async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('setVibrateOnly', {
+          'enabled': enabled,
+        }),
+      );
+
+  /// The phone maker's family, lowercased (e.g. "xiaomi" for Redmi).
+  static Future<String> getPhoneMaker() async =>
+      await _channel.invokeMethod<String>('getPhoneMaker') ?? '';
+
+  /// The maker's own background-app settings, or the app's details page.
+  static Future<void> openPhoneMakerSettings() =>
+      _channel.invokeMethod('openPhoneMakerSettings');
+
   /// 1 s location updates while the direction screen is visible.
   static Future<void> setFastUpdates(bool enabled) =>
       _channel.invokeMethod('setFastUpdates', {'enabled': enabled});
@@ -143,4 +164,8 @@ class NativeService {
 
   static Future<void> openFullScreenSettings() =>
       _channel.invokeMethod('openFullScreenSettings');
+
+  /// Asks Android to stop battery-optimizing the app.
+  static Future<void> requestBatteryExemption() =>
+      _channel.invokeMethod('requestBatteryExemption');
 }

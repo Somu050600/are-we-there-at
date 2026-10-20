@@ -4,12 +4,14 @@ import '../services/error_message.dart';
 import '../services/native_service.dart';
 import '../services/trip_controller.dart';
 import '../services/trip_state.dart';
+import '../widgets/battery_card.dart';
+import '../util/relative_time.dart';
 import '../widgets/destination_tile.dart';
-import '../widgets/full_screen_alarm_card.dart';
 import '../util/haptics.dart';
 import '../widgets/last_trip_card.dart';
 import 'destination_sheet.dart';
 import 'direction_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller, this.now});
@@ -22,8 +24,19 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+/// What the destination rows show of the trip; changes far less often than
+/// the trip itself, which reports every fix.
+typedef _ActiveTrip = ({String? id, bool paused});
+
+/// Beyond this, a trip is long enough to ask for the battery exemption.
+const _longTripMeters = 30000.0;
+
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final Stream<List<Destination>> _destinations;
+  late final ValueNotifier<_ActiveTrip> _active;
+
+  /// Trips already asked about the battery exemption, by destination id.
+  final _askedAboutBattery = <String>{};
 
   TripController get _controller => widget.controller;
 
@@ -31,18 +44,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _destinations = _controller.database.watchDestinations();
+    _active = ValueNotifier(_activeOf(_controller.trip.value));
+    _controller.trip.addListener(_syncActive);
     WidgetsBinding.instance.addObserver(this);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _controller.trip.removeListener(_syncActive);
+    _active.dispose();
     super.dispose();
+  }
+
+  static _ActiveTrip _activeOf(TripState trip) => (
+    id: trip.isActive ? trip.destinationId : null,
+    paused: trip.status == TripStatus.paused,
+  );
+
+  // Records compare by value, so rows rebuild only when this changes.
+  void _syncActive() {
+    _active.value = _activeOf(_controller.trip.value);
+    _maybeAskAboutBattery();
+  }
+
+  /// Once per trip: a long one with battery optimization on is the case
+  /// where Android is most likely to stop tracking.
+  void _maybeAskAboutBattery() {
+    final trip = _controller.trip.value;
+    final id = trip.destinationId;
+    final distance = trip.distanceMeters;
+    if (trip.status != TripStatus.tracking ||
+        id == null ||
+        distance == null ||
+        distance < _longTripMeters ||
+        _controller.alarmSettings.value.batteryUnrestricted ||
+        !_askedAboutBattery.add(id)) {
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.battery_alert),
+        title: const Text('Long trip ahead'),
+        content: Text(
+          '${formatDistance(distance)} to go. Android may stop tracking '
+          'to save battery. Let the app run without battery restrictions?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Haptics.tap();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _attempt(NativeService.requestBatteryExemption);
+            },
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Haptics.tap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(controller: _controller),
+      ),
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The user may have changed the full-screen permission in Settings.
+    // The user may have changed the full-screen permission or battery
+    // optimization in Settings.
     if (state == AppLifecycleState.resumed) {
       _controller.refreshAlarmSettings().catchError((Object _) {});
     }
@@ -106,23 +187,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             }
             final destinations = snapshot.data!;
             final now = (widget.now ?? DateTime.now)();
-            return ValueListenableBuilder<TripState>(
-              valueListenable: _controller.trip,
-              builder: (context, trip, _) {
-                final activeId = trip.isActive ? trip.destinationId : null;
-                Destination? find(String? id) =>
-                    destinations.where((d) => d.id == id).firstOrNull;
-                final top = trip.isActive
-                    ? find(activeId)
-                    : destinations
-                          .where((d) => d.lastUsedAt != null)
-                          .firstOrNull;
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-                  children: [
-                    if (trip.isActive || top != null) ...[
-                      LastTripCard(
+            // Only the top card follows every fix; the list is built once per
+            // change to the saved destinations.
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    tooltip: 'Settings',
+                    onPressed: _openSettings,
+                    icon: const Icon(Icons.settings_outlined),
+                  ),
+                ),
+                ValueListenableBuilder<TripState>(
+                  valueListenable: _controller.trip,
+                  builder: (context, trip, _) {
+                    final top = trip.isActive
+                        ? destinations
+                              .where((d) => d.id == trip.destinationId)
+                              .firstOrNull
+                        : destinations
+                              .where((d) => d.lastUsedAt != null)
+                              .firstOrNull;
+                    if (!trip.isActive && top == null) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 32),
+                      child: LastTripCard(
                         trip: trip,
+                        clock: widget.now ?? DateTime.now,
                         destination: top,
                         onRestart: () =>
                             _attempt(() => _controller.start(top!), trip: true),
@@ -132,68 +227,77 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         onStop: () => _attempt(_controller.stop, trip: true),
                         onOpen: () => _openDirection(top),
                       ),
-                      const SizedBox(height: 32),
-                    ],
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8, bottom: 12),
-                      child: Text(
-                        'Saved Destinations',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    if (destinations.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 8,
-                        ),
-                        child: Text(
-                          'No saved destinations yet.',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      ),
-                    for (final destination in destinations)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: DestinationTile(
-                          key: ValueKey(destination.id),
-                          destination: destination,
-                          now: now,
-                          active: destination.id == activeId,
-                          paused: trip.status == TripStatus.paused,
-                          onTap: destination.id == activeId
-                              ? () => _openDirection(destination)
-                              : () => _edit(destination),
-                          onLongPress: () => _edit(destination),
-                          onStart: () => _attempt(
-                            () => _controller.start(destination),
-                            trip: true,
+                    );
+                  },
+                ),
+                ValueListenableBuilder<AlarmSettings>(
+                  valueListenable: _controller.alarmSettings,
+                  builder: (context, settings, _) =>
+                      settings.batteryUnrestricted
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child: BatteryCard(
+                            onAllow: () =>
+                                _attempt(NativeService.requestBatteryExemption),
                           ),
-                          onStop: () => _attempt(_controller.stop, trip: true),
-                          onPause: () =>
-                              _attempt(_controller.pause, trip: true),
-                          onResume: () =>
-                              _attempt(_controller.resume, trip: true),
                         ),
-                      ),
-                    const SizedBox(height: 24),
-                    const _Hints(),
-                    const SizedBox(height: 24),
-                    ValueListenableBuilder<AlarmSettings>(
-                      valueListenable: _controller.alarmSettings,
-                      builder: (context, settings, _) => FullScreenAlarmCard(
-                        settings: settings,
-                        onChanged: (enabled) =>
-                            _attempt(() => _controller.setFullScreen(enabled)),
-                        onOpenSettings: () =>
-                            _attempt(NativeService.openFullScreenSettings),
-                      ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(left: 8, bottom: 12),
+                  child: Text(
+                    'Saved Destinations',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+                if (destinations.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      'No saved destinations yet.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ValueListenableBuilder<_ActiveTrip>(
+                  valueListenable: _active,
+                  builder: (context, active, _) => Column(
+                    children: [
+                      for (final destination in destinations)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: DestinationTile(
+                            key: ValueKey(destination.id),
+                            destination: destination,
+                            now: now,
+                            active: destination.id == active.id,
+                            paused: active.paused,
+                            onTap: destination.id == active.id
+                                ? () => _openDirection(destination)
+                                : () => _edit(destination),
+                            onLongPress: () => _edit(destination),
+                            onStart: () => _attempt(
+                              () => _controller.start(destination),
+                              trip: true,
+                            ),
+                            onStop: () =>
+                                _attempt(_controller.stop, trip: true),
+                            onPause: () =>
+                                _attempt(_controller.pause, trip: true),
+                            onResume: () =>
+                                _attempt(_controller.resume, trip: true),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const _Hints(),
+              ],
             );
           },
         ),

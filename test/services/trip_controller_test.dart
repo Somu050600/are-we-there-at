@@ -100,6 +100,7 @@ void main() {
       'lat': 12.97,
       'lng': 77.57,
       'radius': 200.0,
+      'alertMinutes': null,
     });
     expect((await db.getDestination('a'))!.lastUsedAt, now);
   });
