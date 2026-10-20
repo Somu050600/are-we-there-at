@@ -78,6 +78,7 @@ class AlarmSettings {
     required this.enabled,
     required this.allowed,
     this.batteryUnrestricted = true,
+    this.vibrateOnly = false,
   });
 
   static const defaults = AlarmSettings(enabled: true, allowed: true);
@@ -92,12 +93,16 @@ class AlarmSettings {
   /// stop tracking on long trips.
   final bool batteryUnrestricted;
 
+  /// Alarms vibrate without sound.
+  final bool vibrateOnly;
+
   factory AlarmSettings.fromMap(Object? raw) {
     if (raw is! Map) return defaults;
     return AlarmSettings(
       enabled: raw['fullScreen'] as bool? ?? true,
       allowed: raw['fullScreenAllowed'] as bool? ?? true,
       batteryUnrestricted: raw['batteryUnrestricted'] as bool? ?? true,
+      vibrateOnly: raw['vibrateOnly'] as bool? ?? false,
     );
   }
 }

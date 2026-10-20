@@ -101,6 +101,11 @@ class TripStore(context: Context) {
         @Synchronized get() = preferences.getBoolean(KEY_FULL_SCREEN, true)
         @Synchronized set(value) = commit { putBoolean(KEY_FULL_SCREEN, value) }
 
+    /** Alarms vibrate without sound, e.g. for a quiet carriage. */
+    var vibrateOnly: Boolean
+        @Synchronized get() = preferences.getBoolean(KEY_VIBRATE_ONLY, false)
+        @Synchronized set(value) = commit { putBoolean(KEY_VIBRATE_ONLY, value) }
+
     var legacyCleanupDone: Boolean
         @Synchronized get() = preferences.getBoolean(KEY_LEGACY_CLEANUP, false)
         @Synchronized set(value) = commit { putBoolean(KEY_LEGACY_CLEANUP, value) }
@@ -117,5 +122,6 @@ class TripStore(context: Context) {
         private const val KEY_ACTIVE = "active"
         private const val KEY_FULL_SCREEN = "full_screen_alarm"
         private const val KEY_LEGACY_CLEANUP = "legacy_geofences_removed"
+        private const val KEY_VIBRATE_ONLY = "vibrate_only"
     }
 }

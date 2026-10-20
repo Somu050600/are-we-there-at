@@ -131,6 +131,21 @@ class NativeService {
         }),
       );
 
+  static Future<AlarmSettings> setVibrateOnly(bool enabled) async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('setVibrateOnly', {
+          'enabled': enabled,
+        }),
+      );
+
+  /// The phone maker's family, lowercased (e.g. "xiaomi" for Redmi).
+  static Future<String> getPhoneMaker() async =>
+      await _channel.invokeMethod<String>('getPhoneMaker') ?? '';
+
+  /// The maker's own background-app settings, or the app's details page.
+  static Future<void> openPhoneMakerSettings() =>
+      _channel.invokeMethod('openPhoneMakerSettings');
+
   /// 1 s location updates while the direction screen is visible.
   static Future<void> setFastUpdates(bool enabled) =>
       _channel.invokeMethod('setFastUpdates', {'enabled': enabled});

@@ -11,6 +11,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Asks to exempt the app from battery optimization for long trips. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- A snoozed alarm rings again on time. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
@@ -75,6 +78,9 @@
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
         <receiver
             android:name=".ArrivalStopReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".AlarmSnoozeReceiver"
             android:exported="false" />
         <receiver
             android:name=".BootReceiver"

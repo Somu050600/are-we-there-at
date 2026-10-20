@@ -33,6 +33,12 @@ distance at which the alarm rang.
 - Time alert of 10 minutes on a 20+ minute ride: "About 10 min to X" rings
   once with roughly 10 minutes left (note how many), tracking continues and
   the arrival alarm still rings at the radius.
+- Snooze from the notification and from the full-screen page: the alarm
+  stops and rings again about 5 minutes later. With Vibrate only on, alarms
+  vibrate repeatedly without sound.
+- With battery optimization on, a trip 30+ km away asks once to allow the
+  exemption. On Xiaomi, Samsung, OPPO, vivo or Huawei, Settings → Open
+  settings reaches the maker's background-app screen (note which one).
 - With battery optimization on, Home shows the battery card; **Allow** opens
   the system dialog and the card disappears after accepting. On Xiaomi, Oppo,
   Vivo and Samsung also set the app's own battery or autostart setting.

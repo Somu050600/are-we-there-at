@@ -83,6 +83,7 @@ class TripService : Service() {
 
     private fun start(trip: Trip) {
         clearRestartNotice()
+        AlarmSnooze.cancel(this)
         store.saveActive(trip)
         lastDistance = null
         lastFix = null
@@ -192,7 +193,11 @@ class TripService : Service() {
         val fullScreen = store.fullScreenEnabled && TripNotifications.canUseFullScreen(this)
         // Remove the progress notification first so the alarm is the only one up.
         stopForeground(STOP_FOREGROUND_REMOVE)
-        notificationManager().notify(TripNotifications.ARRIVAL_ID, TripNotifications.arrival(this, trip, fullScreen))
+        AlarmSnooze.cancel(this)
+        notificationManager().notify(
+            TripNotifications.ARRIVAL_ID,
+            TripNotifications.arrival(this, trip, fullScreen, store.vibrateOnly),
+        )
         stopSelf()
         TripEvents.publish(TripSnapshot(TripStatus.ARRIVED, trip, lastDistance, 1.0, lastFix, speed, null, 0.0))
     }
@@ -200,9 +205,10 @@ class TripService : Service() {
     private fun ringTimeAlert(trip: Trip) {
         val minutes = trip.alertMinutes ?: return
         val fullScreen = store.fullScreenEnabled && TripNotifications.canUseFullScreen(this)
+        AlarmSnooze.cancel(this)
         notificationManager().notify(
             TripNotifications.ARRIVAL_ID,
-            TripNotifications.timeAlert(this, trip, minutes, fullScreen),
+            TripNotifications.timeAlert(this, trip, minutes, fullScreen, store.vibrateOnly),
         )
     }
 

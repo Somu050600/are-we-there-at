@@ -84,6 +84,10 @@ class TripController {
     alarmSettings.value = await NativeService.setFullScreenAlarm(enabled);
   });
 
+  Future<void> setVibrateOnly(bool enabled) => _run(() async {
+    alarmSettings.value = await NativeService.setVibrateOnly(enabled);
+  });
+
   Future<void> refreshAlarmSettings() => _run(() async {
     alarmSettings.value = await NativeService.getAlarmSettings();
   });

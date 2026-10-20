@@ -84,7 +84,7 @@ class TripServiceTest {
     // ~13.5 km north: low-accuracy territory.
     private fun veryFar() = source.at(13.10, 77.5710)
 
-    /** Pending low-power fallback alarms; the service only ever sets one. */
+    /** Pending alarms: the low-power fallback (at most one) or a snoozed alarm. */
     private fun fallbackAlarms() = shadowOf(alarms).scheduledAlarms.size
 
     private fun battery(percent: Int, plugged: Int = 0) {
@@ -171,6 +171,26 @@ class TripServiceTest {
         assertNull(alarmTitle())
         source.at(12.9785, 77.5711)
         assertEquals("Arrived at Station", alarmTitle())
+    }
+
+    @Test
+    fun `alarms follow the vibrate only setting`() {
+        TripStore(context).vibrateOnly = true
+        started()
+        far()
+        source.at(12.9785, 77.5711)
+        assertEquals(
+            TripNotifications.ARRIVAL_VIBRATE_CHANNEL,
+            shadowOf(manager).getNotification(TripNotifications.ARRIVAL_ID).channelId,
+        )
+    }
+
+    @Test
+    fun `a new trip or alarm drops a pending snooze`() {
+        AlarmSnooze.snooze(context, TripNotifications.arrivalContent(trip))
+        assertEquals(1, fallbackAlarms())
+        started()
+        assertEquals(0, fallbackAlarms())
     }
 
     @Test

@@ -81,9 +81,21 @@ class TripNotificationsTest {
         assertEquals(Notification.CATEGORY_ALARM, plain.category)
         assertTrue(plain.flags and Notification.FLAG_INSISTENT != 0)
         assertNull(plain.fullScreenIntent)
-        assertEquals(listOf("Stop"), plain.actionTitles())
+        assertEquals(listOf("Stop", "Snooze 5 min"), plain.actionTitles())
+        assertEquals(TripNotifications.ARRIVAL_CHANNEL, plain.channelId)
 
         assertNotNull(TripNotifications.arrival(context, trip, fullScreen = true).fullScreenIntent)
+    }
+
+    @Test
+    fun `vibrate only uses the silent alarm channel`() {
+        val quiet = TripNotifications.arrival(context, trip, fullScreen = false, vibrateOnly = true)
+        assertEquals(TripNotifications.ARRIVAL_VIBRATE_CHANNEL, quiet.channelId)
+        assertTrue(quiet.flags and Notification.FLAG_INSISTENT != 0)
+        val channel = manager.getNotificationChannel(TripNotifications.ARRIVAL_VIBRATE_CHANNEL)
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
+        assertNull(channel.sound)
+        assertTrue(channel.shouldVibrate())
     }
 
     @Test

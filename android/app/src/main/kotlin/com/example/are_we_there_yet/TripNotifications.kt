@@ -15,13 +15,12 @@ object TripNotifications {
     const val PROGRESS_CHANNEL = "trip_progress_v2"
     private const val OLD_PROGRESS_CHANNEL = "trip_progress_v1"
     const val ARRIVAL_CHANNEL = "arrival_alarm_v2"
+    const val ARRIVAL_VIBRATE_CHANNEL = "arrival_vibrate_v1"
     private const val NOTICE_CHANNEL = "trip_notices_v1"
     const val PROGRESS_ID = 1001
     const val ARRIVAL_ID = 1002
     const val RESTART_ID = 1003
     const val BATTERY_ID = 1004
-    const val EXTRA_NAME = "destination_name"
-    const val EXTRA_HEADLINE = "headline"
     private const val ALARM_TIMEOUT_MILLIS = 5 * 60 * 1000L
     private val VIBRATION = longArrayOf(0, 600, 400, 600)
 
@@ -45,6 +44,14 @@ object TripNotifications {
                 enableVibration(true)
                 vibrationPattern = VIBRATION
                 setSound(alarmSound(), AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).build())
+            },
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(ARRIVAL_VIBRATE_CHANNEL, "Arrival alarm (vibrate only)", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Vibrates without sound when you reach your destination"
+                enableVibration(true)
+                vibrationPattern = VIBRATION
+                setSound(null, null)
             },
         )
         manager.createNotificationChannel(
@@ -109,38 +116,38 @@ object TripNotifications {
         else -> "${TripMath.formatDistance(distance)} remaining (${TripMath.percent(progress)}%)"
     }
 
-    fun arrival(context: Context, trip: Trip, fullScreen: Boolean): Notification = alarm(
-        context, trip, fullScreen,
+    fun arrivalContent(trip: Trip) = AlarmContent(
+        name = trip.name,
         title = "Arrived at ${trip.name}",
         text = "You have reached your destination",
         headline = "Arrived",
     )
 
     /** Rings like the arrival alarm; tracking goes on until the radius. */
-    fun timeAlert(context: Context, trip: Trip, minutes: Int, fullScreen: Boolean): Notification = alarm(
-        context, trip, fullScreen,
+    fun timeAlertContent(trip: Trip, minutes: Int) = AlarmContent(
+        name = trip.name,
         title = "About $minutes min to ${trip.name}",
         text = "Get ready. The arrival alarm will still ring at the destination.",
         headline = "About $minutes min to",
     )
 
-    private fun alarm(
-        context: Context,
-        trip: Trip,
-        fullScreen: Boolean,
-        title: String,
-        text: String,
-        headline: String,
-    ): Notification {
+    fun arrival(context: Context, trip: Trip, fullScreen: Boolean, vibrateOnly: Boolean = false) =
+        alarm(context, arrivalContent(trip), fullScreen, vibrateOnly)
+
+    fun timeAlert(context: Context, trip: Trip, minutes: Int, fullScreen: Boolean, vibrateOnly: Boolean = false) =
+        alarm(context, timeAlertContent(trip, minutes), fullScreen, vibrateOnly)
+
+    /** An insistent alarm with Stop and Snooze; [vibrateOnly] uses the silent channel. */
+    fun alarm(context: Context, content: AlarmContent, fullScreen: Boolean, vibrateOnly: Boolean): Notification {
         ensureChannels(context)
         val stop = PendingIntent.getBroadcast(
             context, 0, Intent(context, ArrivalStopReceiver::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val builder = builder(context, ARRIVAL_CHANNEL)
+        val builder = builder(context, if (vibrateOnly) ARRIVAL_VIBRATE_CHANNEL else ARRIVAL_CHANNEL)
             .setSmallIcon(R.drawable.ic_trip_arrow)
-            .setContentTitle(title)
-            .setContentText(text)
+            .setContentTitle(content.title)
+            .setContentText(content.text)
             .setCategory(Notification.CATEGORY_ALARM)
             .ownGroup("arrival_alarm")
             .setPriority(Notification.PRIORITY_MAX)
@@ -150,14 +157,13 @@ object TripNotifications {
             .setContentIntent(openApp(context))
             .setDeleteIntent(stop)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())
-            .setSound(alarmSound())
+            .addAction(Notification.Action.Builder(null, "Snooze ${AlarmSnooze.MINUTES} min", AlarmSnooze.snoozeIntent(context, content)).build())
             .setVibrate(VIBRATION)
+        if (!vibrateOnly) builder.setSound(alarmSound())
         if (fullScreen) {
             val screen = PendingIntent.getActivity(
                 context, 0,
-                Intent(context, ArrivalActivity::class.java)
-                    .putExtra(EXTRA_NAME, trip.name)
-                    .putExtra(EXTRA_HEADLINE, headline)
+                content.putInto(Intent(context, ArrivalActivity::class.java))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )

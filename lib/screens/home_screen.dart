@@ -5,12 +5,13 @@ import '../services/native_service.dart';
 import '../services/trip_controller.dart';
 import '../services/trip_state.dart';
 import '../widgets/battery_card.dart';
+import '../util/relative_time.dart';
 import '../widgets/destination_tile.dart';
-import '../widgets/full_screen_alarm_card.dart';
 import '../util/haptics.dart';
 import '../widgets/last_trip_card.dart';
 import 'destination_sheet.dart';
 import 'direction_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.controller, this.now});
@@ -27,9 +28,15 @@ class HomeScreen extends StatefulWidget {
 /// the trip itself, which reports every fix.
 typedef _ActiveTrip = ({String? id, bool paused});
 
+/// Beyond this, a trip is long enough to ask for the battery exemption.
+const _longTripMeters = 30000.0;
+
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final Stream<List<Destination>> _destinations;
   late final ValueNotifier<_ActiveTrip> _active;
+
+  /// Trips already asked about the battery exemption, by destination id.
+  final _askedAboutBattery = <String>{};
 
   TripController get _controller => widget.controller;
 
@@ -56,7 +63,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   );
 
   // Records compare by value, so rows rebuild only when this changes.
-  void _syncActive() => _active.value = _activeOf(_controller.trip.value);
+  void _syncActive() {
+    _active.value = _activeOf(_controller.trip.value);
+    _maybeAskAboutBattery();
+  }
+
+  /// Once per trip: a long one with battery optimization on is the case
+  /// where Android is most likely to stop tracking.
+  void _maybeAskAboutBattery() {
+    final trip = _controller.trip.value;
+    final id = trip.destinationId;
+    final distance = trip.distanceMeters;
+    if (trip.status != TripStatus.tracking ||
+        id == null ||
+        distance == null ||
+        distance < _longTripMeters ||
+        _controller.alarmSettings.value.batteryUnrestricted ||
+        !_askedAboutBattery.add(id)) {
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.battery_alert),
+        title: const Text('Long trip ahead'),
+        content: Text(
+          '${formatDistance(distance)} to go. Android may stop tracking '
+          'to save battery. Let the app run without battery restrictions?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Haptics.tap();
+              Navigator.of(context).pop();
+            },
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              _attempt(NativeService.requestBatteryExemption);
+            },
+            child: const Text('Allow'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openSettings() {
+    Haptics.tap();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(controller: _controller),
+      ),
+    );
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -128,8 +190,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // Only the top card follows every fix; the list is built once per
             // change to the saved destinations.
             return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
               children: [
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    tooltip: 'Settings',
+                    onPressed: _openSettings,
+                    icon: const Icon(Icons.settings_outlined),
+                  ),
+                ),
                 ValueListenableBuilder<TripState>(
                   valueListenable: _controller.trip,
                   builder: (context, trip, _) {
@@ -227,17 +297,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 const SizedBox(height: 24),
                 const _Hints(),
-                const SizedBox(height: 24),
-                ValueListenableBuilder<AlarmSettings>(
-                  valueListenable: _controller.alarmSettings,
-                  builder: (context, settings, _) => FullScreenAlarmCard(
-                    settings: settings,
-                    onChanged: (enabled) =>
-                        _attempt(() => _controller.setFullScreen(enabled)),
-                    onOpenSettings: () =>
-                        _attempt(NativeService.openFullScreenSettings),
-                  ),
-                ),
               ],
             );
           },

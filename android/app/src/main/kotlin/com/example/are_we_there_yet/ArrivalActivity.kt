@@ -27,8 +27,9 @@ class ArrivalActivity : Activity() {
             @Suppress("DEPRECATION")
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         }
-        val name = intent.getStringExtra(TripNotifications.EXTRA_NAME) ?: "your destination"
-        val headline = intent.getStringExtra(TripNotifications.EXTRA_HEADLINE) ?: "Arrived"
+        val content = AlarmContent.from(intent)
+        val name = content?.name ?: "your destination"
+        val headline = content?.headline ?: "Arrived"
         setContentView(
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -51,6 +52,22 @@ class ArrivalActivity : Activity() {
                     },
                     LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(48) },
                 )
+                if (content != null) {
+                    addView(
+                        Button(context).apply {
+                            text = "Snooze ${AlarmSnooze.MINUTES} min"
+                            textSize = 18f
+                            isAllCaps = false
+                            setTextColor(Color.parseColor("#B9C3DB"))
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(32).toFloat()
+                                setStroke(dp(2), Color.parseColor("#B9C3DB"))
+                            }
+                            setOnClickListener { AlarmSnooze.snooze(context, content); finish() }
+                        },
+                        LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64)).apply { topMargin = dp(16) },
+                    )
+                }
             },
         )
     }

@@ -88,6 +88,27 @@ first reaches 20% and again at 10%. Plugging in clears it and re-arms both
 warnings. The level is read when the trip starts and from
 `ACTION_BATTERY_CHANGED` while the service runs. Stop and arrival clear it.
 
+## Settings, long trips and alarm options
+
+- **Settings screen** (gear on Home): the full-screen alarm toggle (moved from
+  Home), Vibrate only, battery optimization status with **Allow**, and the
+  phone maker's own setting.
+- **Long trip prompt.** While tracking with battery optimization on, the first
+  fix 30 km or more away asks once per trip whether to allow the exemption.
+- **Phone makers.** `getPhoneMaker` returns the maker's family (Redmi and
+  POCO → xiaomi, realme → oppo, iQOO → vivo, Honor → huawei). Xiaomi, Samsung,
+  OPPO/OnePlus, vivo and Huawei get written steps and **Open settings**, which
+  tries the maker's own screens (they move between versions), then app info.
+- **Snooze** on the alarm notification and the full-screen page silences it
+  and rings the same alarm again in 5 minutes: an exact alarm
+  (`USE_EXACT_ALARM`, `SCHEDULE_EXACT_ALARM` up to Android 12L), inexact if
+  not allowed. A new alarm or trip cancels a pending snooze.
+- **Vibrate only** posts alarms on a second high-importance channel without
+  sound (`arrival_vibrate_v1`); still insistent, so the vibration repeats.
+- Not done: **rising volume**. Channels cannot fade a sound in; it needs the
+  app to play the alarm itself and stay alive while it rings, which is a
+  change to the most safety-critical path and should be tested on devices.
+
 ## Smaller savings
 
 - The progress notification is reposted from a fix only when its text

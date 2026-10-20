@@ -62,6 +62,13 @@ class TripStoreTest {
     }
 
     @Test
+    fun `vibrate only defaults off and persists`() {
+        assertFalse(TripStore(context).vibrateOnly)
+        TripStore(context).vibrateOnly = true
+        assertTrue(TripStore(context).vibrateOnly)
+    }
+
+    @Test
     fun `clearing removes the active trip`() {
         val store = TripStore(context)
         store.saveActive(Trip("a", "Station", 1.0, 2.0, 100.0, null, false))

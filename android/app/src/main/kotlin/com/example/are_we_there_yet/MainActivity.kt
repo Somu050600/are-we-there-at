@@ -145,6 +145,12 @@ class MainActivity : FlutterActivity() {
             }
             "openFullScreenSettings" -> openFullScreenSettings(rawResult)
             "requestBatteryExemption" -> requestBatteryExemption(rawResult)
+            "setVibrateOnly" -> parseOrError(rawResult) { result ->
+                store.vibrateOnly = NativeArguments.enabled(call.arguments)
+                result.success(alarmSettings())
+            }
+            "getPhoneMaker" -> track(rawResult).success(PhoneMaker.family(Build.MANUFACTURER))
+            "openPhoneMakerSettings" -> openPhoneMakerSettings(rawResult)
             "setFastUpdates" -> parseOrError(rawResult) { result ->
                 val enabled = NativeArguments.enabled(call.arguments)
                 // Only a running trip changes cadence; never start the service for this.
@@ -192,7 +198,24 @@ class MainActivity : FlutterActivity() {
         "fullScreen" to store.fullScreenEnabled,
         "fullScreenAllowed" to TripNotifications.canUseFullScreen(this),
         "batteryUnrestricted" to isBatteryUnrestricted(),
+        "vibrateOnly" to store.vibrateOnly,
     )
+
+    private fun openPhoneMakerSettings(rawResult: MethodChannel.Result) {
+        val result = track(rawResult)
+        for (intent in PhoneMaker.settingsIntents(Build.MANUFACTURER) + appDetailsIntent()) {
+            try {
+                startActivity(intent)
+                result.success(null)
+                return
+            } catch (_: android.content.ActivityNotFoundException) {
+                // Try the next screen.
+            } catch (_: SecurityException) {
+                // Not exported on this version.
+            }
+        }
+        result.error("SETTINGS_UNAVAILABLE", "Could not open the phone's settings", null)
+    }
 
     private fun isBatteryUnrestricted() =
         getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(packageName) ?: true
