@@ -17,6 +17,9 @@ distance at which the alarm rang.
 - With a release build: share a named place from the Google Maps app. The
   sheet shows it without "Approximate" and at the place Maps showed (try one
   with a same-named place nearby).
+- On mobile data (Jio 5G), share a named place from Google Maps: the exact
+  place shows. With mobile data off, the sheet says "Couldn't reach Google
+  Maps" with Retry; turn data back on and Retry shows the place.
 - Start: deny precise location, allow approximate only, then allow precise.
   Deny notifications on Android 13+, then allow. A refused Start keeps the
   destination saved.

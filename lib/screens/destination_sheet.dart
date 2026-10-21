@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 import '../models/destination.dart';
 import '../services/error_message.dart';
@@ -11,7 +12,8 @@ import '../widgets/destination_icon.dart';
 /// Bottom sheet to save a shared place ([shared]) or edit [existing].
 ///
 /// With [pending], the sheet opens at once and says it is finding the place
-/// while the share is read. If reading fails, it closes and returns the error.
+/// while the share is read. If Google Maps can't be reached it offers Retry;
+/// any other failure closes it and returns the error.
 Future<Object?> showDestinationSheet(
   BuildContext context, {
   required TripController controller,
@@ -59,6 +61,9 @@ class _DestinationSheetState extends State<DestinationSheet> {
   bool _busy = false;
   String? _error;
 
+  /// Why Google Maps couldn't be reached, while Retry is offered.
+  String? _unreachable;
+
   bool get _editing => widget.existing != null;
 
   @override
@@ -70,22 +75,46 @@ class _DestinationSheetState extends State<DestinationSheet> {
     } else if (widget.shared != null) {
       _showShared(widget.shared!);
     } else {
-      _loading = true;
-      widget.pending!.then(
-        (shared) {
-          if (!mounted) return;
-          // Taken by another reader in the meantime: nothing to show.
-          if (shared == null) return Navigator.of(context).pop();
+      _read(widget.pending!);
+    }
+  }
+
+  void _read(Future<SharedLocation?> pending) {
+    _loading = true;
+    _unreachable = null;
+    pending.then(
+      (shared) {
+        if (!mounted) return;
+        // Taken by another reader in the meantime: nothing to show.
+        if (shared == null) return Navigator.of(context).pop();
+        setState(() {
+          _loading = false;
+          _showShared(shared);
+        });
+      },
+      onError: (Object error) {
+        if (!mounted) return;
+        if (error is PlatformException && error.code == 'UNREACHABLE') {
+          Haptics.error();
           setState(() {
             _loading = false;
-            _showShared(shared);
+            _unreachable = errorMessage(error);
           });
-        },
-        onError: (Object error) {
-          if (mounted) Navigator.of(context).pop(error);
-        },
-      );
-    }
+        } else {
+          Navigator.of(context).pop(error);
+        }
+      },
+    );
+  }
+
+  void _retry() {
+    Haptics.tap();
+    // Gone only if the app was closed since: say so instead of just closing.
+    final pending = NativeService.retrySharedLocation().then(
+      (shared) =>
+          shared ?? (throw const FormatException('Share the place again.')),
+    );
+    setState(() => _read(pending));
   }
 
   void _show(Destination destination) {
@@ -144,51 +173,77 @@ class _DestinationSheetState extends State<DestinationSheet> {
     }
   }
 
-  Widget _finding(ThemeData theme) => Padding(
-    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'New Destination',
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w600,
+  /// The sheet while the share is read, or after Google Maps couldn't be
+  /// reached.
+  Widget _reading(ThemeData theme) {
+    final unreachable = _unreachable;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'New Destination',
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: Row(
-            children: [
-              const SizedBox.square(
-                dimension: 24,
-                child: CircularProgressIndicator(strokeWidth: 3),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  'Finding the place…',
-                  style: theme.textTheme.bodyLarge,
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              children: [
+                SizedBox.square(
+                  dimension: 24,
+                  child: unreachable == null
+                      ? const CircularProgressIndicator(strokeWidth: 3)
+                      : Icon(Icons.cloud_off, color: theme.colorScheme.error),
                 ),
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    unreachable ?? 'Finding the place…',
+                    style: theme.textTheme.bodyLarge,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: 20),
-        _cancelButton(),
-      ],
-    ),
-  );
+          const SizedBox(height: 20),
+          if (unreachable == null)
+            _cancelButton()
+          else
+            Row(
+              children: [
+                Expanded(child: _cancelButton()),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(64, 56),
+                      shape: const StadiumBorder(),
+                    ),
+                    onPressed: _retry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    if (_loading) return _finding(theme);
+    if (_loading || _unreachable != null) return _reading(theme);
     final controller = widget.controller;
     // A destination saved with a larger radius keeps it on the scale.
     final stops = radiusStops(

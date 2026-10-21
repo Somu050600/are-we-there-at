@@ -42,8 +42,17 @@ class NativeService {
   static Future<bool> hasSharedLocation() async =>
       await _channel.invokeMethod<bool>('hasSharedLocation') ?? false;
 
-  static Future<SharedLocation?> getSharedLocation() async {
-    final result = await _channel.invokeMethod<Object?>('getSharedLocation');
+  static Future<SharedLocation?> getSharedLocation() async => _sharedLocation(
+    await _channel.invokeMethod<Object?>('getSharedLocation'),
+  );
+
+  /// Reads again the share that failed with `UNREACHABLE`; null once it is
+  /// gone (the app was closed in between).
+  static Future<SharedLocation?> retrySharedLocation() async => _sharedLocation(
+    await _channel.invokeMethod<Object?>('retrySharedLocation'),
+  );
+
+  static SharedLocation? _sharedLocation(Object? result) {
     if (result == null) return null;
     if (result is! Map || result['lat'] is! num || result['lng'] is! num) {
       throw const FormatException('The shared location could not be read.');

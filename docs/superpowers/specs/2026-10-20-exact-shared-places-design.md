@@ -34,6 +34,23 @@ Checked against a real share (Beyond Bajji, Nellore):
 - The key comes from `PLACES_API_KEY` (CI secret, or `android/local.properties`)
   into `BuildConfig`. Release builds warn when it is missing.
 
+## Unreachable short links
+
+On some mobile networks (seen on an IPv6-only 5G network, where the carrier's
+DNS points `maps.app.goo.gl` at a carrier-hosted server) Android's plain
+connection to the short link times out every time.
+
+- `WebConnections` sends the short-link and Places requests through Cronet
+  from Play services first (Chrome's stack: QUIC, hinted for these hosts so it
+  is tried on the first request, and IPv6/IPv4 racing), then through Android's
+  own stack. Timeouts are 8 s.
+- If a later redirect hop fails, the Maps link already reached is used.
+- If the short link itself can't be opened and the text has no coordinates,
+  nothing is guessed: native answers `UNREACHABLE` and keeps the share. The
+  sheet says "Couldn't reach Google Maps" with **Retry**, which calls
+  `retrySharedLocation` to read the same share again. If the app was closed in
+  between, Retry asks to share the place again.
+
 ## Cost
 
 One request per share of a named place; none for links with coordinates.

@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -37,10 +38,13 @@ class MainActivity : FlutterActivity() {
     private val openResults = mutableSetOf<ChannelResult>()
     private var activeOperation: ActiveOperation? = null
     private var destroyed = false
+    /** A share whose link couldn't be opened, kept so the sheet can try it again. */
+    private var unreachableShare: IncomingShare? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         store = TripStore(applicationContext)
+        WebConnections.prepare(applicationContext)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
         channel.setMethodCallHandler(::onMethodCall)
         headingEvents = EventChannel(flutterEngine.dartExecutor.binaryMessenger, HEADING_CHANNEL)
@@ -111,7 +115,9 @@ class MainActivity : FlutterActivity() {
 
     private fun onMethodCall(call: MethodCall, rawResult: MethodChannel.Result) {
         when (call.method) {
-            "getSharedLocation" -> getSharedLocation(rawResult)
+            "getSharedLocation" -> readShare(rawResult, inbox.take())
+            // The share whose link couldn't be opened, read again.
+            "retrySharedLocation" -> readShare(rawResult, unreachableShare)
             // Lets the app open the sheet while the share is still being read.
             "hasSharedLocation" -> track(rawResult).success(inbox.hasShares())
             "startTrip" -> parseOrError(rawResult) { result ->
@@ -306,9 +312,8 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun getSharedLocation(rawResult: MethodChannel.Result) {
+    private fun readShare(rawResult: MethodChannel.Result, share: IncomingShare?) {
         val result = track(rawResult)
-        val share = inbox.take()
         if (share == null) {
             result.success(null)
             return
@@ -321,6 +326,7 @@ class MainActivity : FlutterActivity() {
                     AndroidPlaceGeocoder(this@MainActivity),
                     GooglePlaces.finder(this@MainActivity),
                 )
+                if (unreachableShare === share) unreachableShare = null
                 if (location == null) {
                     result.error(
                         "INVALID_SHARE",
@@ -340,8 +346,17 @@ class MainActivity : FlutterActivity() {
                 }
             } catch (cancelled: CancellationException) {
                 if (!destroyed) result.error("CANCELLED", "Share parsing was cancelled", null)
+            } catch (offline: ShareUnreachableException) {
+                unreachableShare = share
+                result.error(
+                    "UNREACHABLE",
+                    "Couldn't reach Google Maps to find this place. Check your connection and try again.",
+                    null,
+                )
             } catch (failure: Throwable) {
-                result.error("INVALID_SHARE", failure.message ?: "The shared location could not be read", null)
+                if (unreachableShare === share) unreachableShare = null
+                Log.w(TAG, "Could not read a share", failure)
+                result.error("INVALID_SHARE", "The shared location could not be read.", null)
             }
         }
     }
@@ -557,6 +572,7 @@ class MainActivity : FlutterActivity() {
     )
 
     companion object {
+        private const val TAG = "MainActivity"
         private const val CHANNEL = "are_we_there/native"
         private const val TRIP_CHANNEL = "are_we_there/trip"
         private const val HEADING_CHANNEL = "are_we_there/heading"

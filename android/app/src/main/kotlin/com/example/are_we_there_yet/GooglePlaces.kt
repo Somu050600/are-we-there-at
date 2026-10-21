@@ -7,7 +7,6 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
@@ -30,7 +29,7 @@ fun interface PlaceFinder {
 object GooglePlaces {
     private const val TAG = "GooglePlaces"
     private const val ENDPOINT = "https://places.googleapis.com/v1/places:searchText"
-    private const val TIMEOUT_MILLIS = 6_000
+    private const val TIMEOUT_MILLIS = 8_000
 
     /** "0x3a4cf32101cd9b9b:0xf4638626f70b8787" in a link's data or ftid parameter. */
     private val featureId = Regex("""0x[0-9a-fA-F]{1,16}:0x([0-9a-fA-F]{1,16})""")
@@ -67,9 +66,8 @@ object GooglePlaces {
         }
     }
 
-    private fun search(key: String, packageName: String, certificate: String?, query: String): String? {
-        val connection = URL(ENDPOINT).openConnection() as HttpURLConnection
-        return try {
+    private fun search(key: String, packageName: String, certificate: String?, query: String): String? = try {
+        WebConnections.request(URL(ENDPOINT)) { connection ->
             connection.requestMethod = "POST"
             connection.connectTimeout = TIMEOUT_MILLIS
             connection.readTimeout = TIMEOUT_MILLIS
@@ -87,15 +85,14 @@ object GooglePlaces {
             if (code !in 200..299) {
                 val error = connection.errorStream?.bufferedReader()?.use { it.readText() }
                 Log.w(TAG, "Text Search failed ($code): ${error?.take(300)}")
-                return null
+                null
+            } else {
+                connection.inputStream.bufferedReader().use { it.readText() }
             }
-            connection.inputStream.bufferedReader().use { it.readText() }
-        } catch (failure: Exception) {
-            Log.w(TAG, "Text Search failed", failure)
-            null
-        } finally {
-            connection.disconnect()
         }
+    } catch (failure: Exception) {
+        Log.w(TAG, "Text Search failed", failure)
+        null
     }
 
     /** SHA-1 of the app's signing certificate, as the Android key restriction expects it. */
