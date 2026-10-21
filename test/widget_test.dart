@@ -21,6 +21,8 @@ void main() {
   late TripController controller;
   late List<MethodCall> calls;
   late List<Object> shares;
+  // What retrySharedLocation returns, in order; null once empty.
+  late List<Object> retries;
   Object? startError;
   Completer<void>? startGate;
   Completer<void>? shareGate;
@@ -48,6 +50,7 @@ void main() {
     );
     calls = [];
     shares = [];
+    retries = [];
     startError = null;
     startGate = null;
     shareGate = null;
@@ -70,6 +73,11 @@ void main() {
           if (shares.isEmpty) return null;
           final value = shares.removeAt(0);
           if (shareGate != null) await shareGate!.future;
+          if (value is Exception) throw value;
+          return value;
+        case 'retrySharedLocation':
+          if (retries.isEmpty) return null;
+          final value = retries.removeAt(0);
           if (value is Exception) throw value;
           return value;
         case 'startTrip':
@@ -141,14 +149,19 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   }
 
+  Map<String, Object> place([
+    String name = 'Station',
+    bool approximate = false,
+  ]) => {
+    'lat': 12.9716,
+    'lng': 77.5946,
+    'name': name,
+    'sharedLink': 'geo:12.9716,77.5946',
+    'approximate': approximate,
+  };
+
   void share([String name = 'Station', bool approximate = false]) =>
-      shares.add({
-        'lat': 12.9716,
-        'lng': 77.5946,
-        'name': name,
-        'sharedLink': 'geo:12.9716,77.5946',
-        'approximate': approximate,
-      });
+      shares.add(place(name, approximate));
 
   Future<void> tap(WidgetTester tester, Finder finder) async {
     await tester.pumpAndSettle();
@@ -305,6 +318,61 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('New Destination'), findsNothing);
     expect(await db.getAllDestinations(), isEmpty);
+    await finish(tester);
+  });
+
+  final unreachable = PlatformException(
+    code: 'UNREACHABLE',
+    message: "Couldn't reach Google Maps to find this place.",
+  );
+
+  appTest('an unreachable share offers Retry and then shows the place', (
+    tester,
+  ) async {
+    shares.add(unreachable);
+    retries.add(unreachable);
+    await mount(tester);
+    expect(
+      find.text("Couldn't reach Google Maps to find this place."),
+      findsOneWidget,
+    );
+    expect(find.text('Start'), findsNothing);
+
+    await tap(tester, find.text('Retry'));
+    expect(
+      find.text("Couldn't reach Google Maps to find this place."),
+      findsOneWidget,
+    );
+
+    retries.add(place('Beyond Bajji'));
+    await tap(tester, find.text('Retry'));
+    expect(find.widgetWithText(TextField, 'Beyond Bajji'), findsOneWidget);
+    await tap(tester, find.text('Start'));
+    expect((await db.getAllDestinations()).single.name, 'Beyond Bajji');
+    expect(methods().where((m) => m == 'retrySharedLocation').length, 2);
+    await finish(tester);
+  });
+
+  appTest('cancelling an unreachable share moves on to the next one', (
+    tester,
+  ) async {
+    shares.add(unreachable);
+    share('Office');
+    await mount(tester);
+    expect(find.text('Retry'), findsOneWidget);
+    await tap(tester, find.text('Cancel'));
+    expect(find.widgetWithText(TextField, 'Office'), findsOneWidget);
+    await finish(tester);
+  });
+
+  appTest('a retry after the share is gone asks to share again', (
+    tester,
+  ) async {
+    shares.add(unreachable);
+    await mount(tester);
+    await tap(tester, find.text('Retry'));
+    expect(find.text('New Destination'), findsNothing);
+    expect(find.text('Share the place again.'), findsOneWidget);
     await finish(tester);
   });
 

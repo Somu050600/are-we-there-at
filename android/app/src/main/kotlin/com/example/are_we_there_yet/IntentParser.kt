@@ -4,12 +4,17 @@ import android.content.Intent
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
 fun interface RedirectResolver {
+    /** Where [url] leads; null when it leads nowhere useful. Throws [IOException] when offline. */
     suspend fun resolve(url: String): String?
 }
+
+/** A share's short link couldn't be opened, so where it points is unknown. Worth a retry. */
+class ShareUnreachableException(cause: IOException) : IOException("Couldn't reach Google Maps", cause)
 
 /** Finds a place by its name or address; returns null when it can't. */
 fun interface PlaceGeocoder {
@@ -94,13 +99,19 @@ object IntentParser {
         var sawMapsLink = false
         var sawOtherLink = false
         var cid: String? = null
+        var unreachable: IOException? = null
         for ((_, url) in links) {
             parseMapUrl(url)?.let { return it.withLabel(textLabel(textWithoutUrls)) }
             placeQuery(url)?.let(places::add)
             googleCid(url)?.let { cid = it }
             if (isMapsLink(url)) sawMapsLink = true else sawOtherLink = true
             if (SafeGoogleMapsRedirectResolver.canResolve(url)) {
-                val resolved = resolver.resolve(url)?.let(::unwrap)
+                val resolved = try {
+                    resolver.resolve(url)?.let(::unwrap)
+                } catch (offline: IOException) {
+                    unreachable = offline
+                    null
+                }
                 if (resolved != null) {
                     parseMapUrl(resolved)?.let { return it.withLabel(textLabel(textWithoutUrls)) }
                     placeQuery(resolved)?.let(places::add)
@@ -114,6 +125,8 @@ object IntentParser {
             val precise = found.lat % 1.0 != 0.0 || found.lng % 1.0 != 0.0
             if (places.isEmpty() || precise) return found.withLabel(textLabel(textWithoutUrls))
         }
+        // Without the link's target there is no Maps id, so a lookup could only guess.
+        unreachable?.let { throw ShareUnreachableException(it) }
 
         // The Maps app shares named places as "Name, address" plus a link that expands to the
         // place without coordinates. Look the place up instead of rejecting the share. Plain
@@ -534,10 +547,13 @@ object IntentParser {
     }
 }
 
-/** Resolves a small HTTPS redirect chain without reading response bodies. */
+/**
+ * Resolves a small HTTPS redirect chain without reading response bodies. Throws an
+ * [IOException] when Google can't be reached.
+ */
 object SafeGoogleMapsRedirectResolver : RedirectResolver {
     private const val MAX_REDIRECTS = 5
-    private const val TIMEOUT_MILLIS = 4_000
+    private const val TIMEOUT_MILLIS = 8_000
 
     internal fun canResolve(value: String): Boolean {
         val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return false
@@ -556,26 +572,31 @@ object SafeGoogleMapsRedirectResolver : RedirectResolver {
                 (parsed.port != -1 && parsed.port != 443) || !IntentParser.isGoogleMapsHost(parsed.host)) {
                 return@withContext null
             }
-            val connection = (parsed.openConnection() as? HttpURLConnection) ?: return@withContext null
-            try {
-                connection.instanceFollowRedirects = false
-                connection.connectTimeout = TIMEOUT_MILLIS
-                connection.readTimeout = TIMEOUT_MILLIS
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("User-Agent", "AreWeThereYet/1")
-                connection.setRequestProperty("Range", "bytes=0-0")
-                val code = connection.responseCode
-                if (code in 300..399) {
-                    if (redirectCount == MAX_REDIRECTS) return@withContext null
-                    val location = connection.getHeaderField("Location") ?: return@withContext null
-                    current = URL(parsed, location).toString()
-                } else {
-                    return@withContext current.takeIf { code in 200..299 }
-                }
-            } finally {
-                connection.disconnect()
+            val (code, location) = try {
+                WebConnections.request(parsed, ::head)
+            } catch (offline: IOException) {
+                // A later hop failing still leaves the Maps link the short link pointed to.
+                if (current != url) return@withContext current
+                throw offline
+            }
+            if (code in 300..399) {
+                if (redirectCount == MAX_REDIRECTS) return@withContext null
+                current = URL(parsed, location ?: return@withContext null).toString()
+            } else {
+                return@withContext current.takeIf { code in 200..299 }
             }
         }
         null
+    }
+
+    /** The status and redirect target; the body is never read. */
+    private fun head(connection: HttpURLConnection): Pair<Int, String?> {
+        connection.instanceFollowRedirects = false
+        connection.connectTimeout = TIMEOUT_MILLIS
+        connection.readTimeout = TIMEOUT_MILLIS
+        connection.requestMethod = "GET"
+        connection.setRequestProperty("User-Agent", "AreWeThereYet/1")
+        connection.setRequestProperty("Range", "bytes=0-0")
+        return connection.responseCode to connection.getHeaderField("Location")
     }
 }

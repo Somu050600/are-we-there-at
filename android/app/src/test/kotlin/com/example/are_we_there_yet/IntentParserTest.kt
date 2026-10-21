@@ -9,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.net.SocketTimeoutException
 
 // IntentParser uses android.net.Uri, which needs Robolectric's implementation.
 @RunWith(RobolectricTestRunner::class)
@@ -327,6 +328,33 @@ class IntentParserTest {
         assertTrue(address?.approximate == true)
         assertEquals("Cubbon Park", geoSearch?.name)
         assertNull(article)
+    }
+
+    @Test
+    fun `an unreachable short link is reported instead of guessed from the name`() = runBlocking {
+        var looked = false
+        val failure = runCatching {
+            IntentParser.parseText(
+                "Beyond Bajji\nNellore, Andhra Pradesh\nhttps://maps.app.goo.gl/CbSikGiBXYpUyJxw7",
+                RedirectResolver { throw SocketTimeoutException("failed to connect") },
+                PlaceGeocoder { looked = true; IntentParser.ParsedLocation(14.4, 79.9) },
+                PlaceFinder { _, _ -> looked = true; IntentParser.ParsedLocation(14.4, 79.9) },
+            )
+        }.exceptionOrNull()
+
+        assertTrue(failure is ShareUnreachableException)
+        assertFalse(looked)
+    }
+
+    @Test
+    fun `coordinates in the text are used when the short link is unreachable`() = runBlocking {
+        val parsed = IntentParser.parseText(
+            "12.9716, 77.5946\nhttps://maps.app.goo.gl/abc",
+            RedirectResolver { throw SocketTimeoutException("failed to connect") },
+        )
+
+        assertEquals(12.9716, parsed?.lat ?: 0.0, 0.0)
+        assertEquals(77.5946, parsed?.lng ?: 0.0, 0.0)
     }
 
     private suspend fun assertLocation(text: String, expected: Pair<Double, Double>, tolerance: Double = 0.0001) {
