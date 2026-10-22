@@ -15,6 +15,8 @@ import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.tasks.Tasks
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -26,6 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 class MainActivity : FlutterActivity() {
     private lateinit var channel: MethodChannel
@@ -40,6 +44,7 @@ class MainActivity : FlutterActivity() {
     private var destroyed = false
     /** A share whose link couldn't be opened, kept so the sheet can try it again. */
     private var unreachableShare: IncomingShare? = null
+    private val placeCache by lazy { PlaceCache(this) }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -118,6 +123,26 @@ class MainActivity : FlutterActivity() {
             "getSharedLocation" -> readShare(rawResult, inbox.take())
             // The share whose link couldn't be opened, read again.
             "retrySharedLocation" -> readShare(rawResult, unreachableShare)
+            // A link or coordinates typed or pasted into Add place, read like a share.
+            "parsePlace" -> parseOrError(rawResult) { result ->
+                val text = NativeArguments.text(call.arguments)
+                readShare(result, IncomingShare(text, text))
+            }
+            "searchPlaces" -> parseOrError(rawResult) { result ->
+                searchPlaces(NativeArguments.placeSearch(call.arguments), result)
+            }
+            "placeLocation" -> parseOrError(rawResult) { result ->
+                val (placeId, session) = NativeArguments.placeId(call.arguments)
+                placeLocation(placeId, session, result)
+            }
+            "setGoogleSearch" -> parseOrError(rawResult) { result ->
+                store.googleSearch = NativeArguments.enabled(call.arguments)
+                result.success(alarmSettings())
+            }
+            "setPlacesSearchFallback" -> parseOrError(rawResult) { result ->
+                store.placesSearchFallback = NativeArguments.enabled(call.arguments)
+                result.success(alarmSettings())
+            }
             // Lets the app open the sheet while the share is still being read.
             "hasSharedLocation" -> track(rawResult).success(inbox.hasShares())
             "startTrip" -> parseOrError(rawResult) { result ->
@@ -212,7 +237,70 @@ class MainActivity : FlutterActivity() {
         "batteryUnrestricted" to isBatteryUnrestricted(),
         "vibrateOnly" to store.vibrateOnly,
         "maxRadiusMeters" to store.maxRadius,
+        "googleSearch" to store.googleSearch,
+        "placesSearchFallback" to store.placesSearchFallback,
+        "placesAvailable" to GooglePlaces.available,
     )
+
+    /** Add place: Android's geocoder (free, with coordinates) or Google's suggestions (picked later). */
+    private fun searchPlaces(search: PlaceSearch, result: ChannelResult) {
+        scope.launch {
+            try {
+                val places = if (search.google) {
+                    val client = GooglePlaces.client(this@MainActivity)
+                        ?: return@launch result.error("NO_PLACES_KEY", "This build can't search Google.", null)
+                    val near = lastKnownLocation()
+                    withContext(Dispatchers.IO) { client.autocomplete(search.query, search.session!!, near) }
+                        .map { mapOf("placeId" to it.placeId, "name" to it.name, "address" to it.address) }
+                } else {
+                    AndroidPlaceGeocoder(this@MainActivity).search(search.query, MAX_SEARCH_RESULTS).map {
+                        mapOf("name" to it.name, "address" to it.address, "lat" to it.lat, "lng" to it.lng)
+                    }
+                }
+                result.success(places)
+            } catch (cancelled: CancellationException) {
+                if (!destroyed) result.error("CANCELLED", "Search was cancelled", null)
+            } catch (offline: ShareUnreachableException) {
+                result.error("UNREACHABLE", "Couldn't reach Google. Check your connection and try again.", null)
+            } catch (failure: Throwable) {
+                Log.w(TAG, "Search failed", failure)
+                result.error("SEARCH_FAILED", "Search didn't work. Try again.", null)
+            }
+        }
+    }
+
+    /** The location of a suggestion; this request also ends its Autocomplete session. */
+    private fun placeLocation(placeId: String, session: String?, result: ChannelResult) {
+        val client = GooglePlaces.client(this)
+            ?: return result.error("NO_PLACES_KEY", "This build can't search Google.", null)
+        scope.launch {
+            try {
+                when (val details = withContext(Dispatchers.IO) { client.details(placeId, session) }) {
+                    is GooglePlaces.Details.Found ->
+                        result.success(mapOf("lat" to details.location.lat, "lng" to details.location.lng))
+                    else -> result.error("SEARCH_FAILED", "Couldn't find where this place is. Try again.", null)
+                }
+            } catch (cancelled: CancellationException) {
+                if (!destroyed) result.error("CANCELLED", "Search was cancelled", null)
+            } catch (offline: ShareUnreachableException) {
+                result.error("UNREACHABLE", "Couldn't reach Google. Check your connection and try again.", null)
+            } catch (failure: Throwable) {
+                Log.w(TAG, "Place Details failed", failure)
+                result.error("SEARCH_FAILED", "Couldn't find where this place is. Try again.", null)
+            }
+        }
+    }
+
+    /** Where the phone last was, to put nearby suggestions first; null without permission. */
+    @SuppressLint("MissingPermission")
+    private suspend fun lastKnownLocation(): Pair<Double, Double>? {
+        if (!hasFineLocationPermission()) return null
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                Tasks.await(LocationServices.getFusedLocationProviderClient(this@MainActivity).lastLocation, 1, TimeUnit.SECONDS)
+            }.getOrNull()?.let { it.latitude to it.longitude }
+        }
+    }
 
     private fun openPhoneMakerSettings(rawResult: MethodChannel.Result) {
         val result = track(rawResult)
@@ -275,20 +363,20 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Lets the user pick any maps app for the place. */
     private fun openInMaps(place: Place, result: ChannelResult) {
-        val navigation = Intent(Intent.ACTION_VIEW, Uri.parse("google.navigation:q=${place.lat},${place.lng}"))
         val label = Uri.encode(place.name)
-        val anyMap = Intent(Intent.ACTION_VIEW, Uri.parse("geo:${place.lat},${place.lng}?q=${place.lat},${place.lng}($label)"))
-        for (intent in listOf(navigation, anyMap)) {
-            try {
-                startActivity(intent)
-                result.success(null)
-                return
-            } catch (_: android.content.ActivityNotFoundException) {
-                // Try the next option.
-            }
+        val geo = Intent(Intent.ACTION_VIEW, Uri.parse("geo:${place.lat},${place.lng}?q=${place.lat},${place.lng}($label)"))
+        if (geo.resolveActivity(packageManager) == null) {
+            result.error("NO_MAPS_APP", "No maps app is installed", null)
+            return
         }
-        result.error("NO_MAPS_APP", "No maps app is installed", null)
+        try {
+            startActivity(Intent.createChooser(geo, "Open with"))
+            result.success(null)
+        } catch (_: android.content.ActivityNotFoundException) {
+            result.error("NO_MAPS_APP", "No maps app is installed", null)
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -312,8 +400,10 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun readShare(rawResult: MethodChannel.Result, share: IncomingShare?) {
-        val result = track(rawResult)
+    private fun readShare(rawResult: MethodChannel.Result, share: IncomingShare?) =
+        readShare(track(rawResult), share)
+
+    private fun readShare(result: ChannelResult, share: IncomingShare?) {
         if (share == null) {
             result.success(null)
             return
@@ -324,7 +414,7 @@ class MainActivity : FlutterActivity() {
                     share.text,
                     SafeGoogleMapsRedirectResolver,
                     AndroidPlaceGeocoder(this@MainActivity),
-                    GooglePlaces.finder(this@MainActivity),
+                    GooglePlaces.finder(this@MainActivity, placeCache, store.placesSearchFallback),
                 )
                 if (unreachableShare === share) unreachableShare = null
                 if (location == null) {
@@ -351,6 +441,13 @@ class MainActivity : FlutterActivity() {
                 result.error(
                     "UNREACHABLE",
                     "Couldn't reach Google Maps to find this place. Check your connection and try again.",
+                    null,
+                )
+            } catch (missing: PlaceNotFoundException) {
+                if (unreachableShare === share) unreachableShare = null
+                result.error(
+                    "INVALID_SHARE",
+                    "Google Maps doesn't know this place any more. Share a dropped pin instead.",
                     null,
                 )
             } catch (failure: Throwable) {
@@ -573,6 +670,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val MAX_SEARCH_RESULTS = 5
         private const val CHANNEL = "are_we_there/native"
         private const val TRIP_CHANNEL = "are_we_there/trip"
         private const val HEADING_CHANNEL = "are_we_there/heading"

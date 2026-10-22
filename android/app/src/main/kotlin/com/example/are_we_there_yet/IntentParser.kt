@@ -98,12 +98,12 @@ object IntentParser {
         textWithoutUrls = textWithoutUrls.replace(geoLine, " ")
         var sawMapsLink = false
         var sawOtherLink = false
-        var cid: String? = null
+        var feature: String? = null
         var unreachable: IOException? = null
         for ((_, url) in links) {
             parseMapUrl(url)?.let { return it.withLabel(textLabel(textWithoutUrls)) }
             placeQuery(url)?.let(places::add)
-            googleCid(url)?.let { cid = it }
+            googleFeature(url)?.let { feature = it }
             if (isMapsLink(url)) sawMapsLink = true else sawOtherLink = true
             if (SafeGoogleMapsRedirectResolver.canResolve(url)) {
                 val resolved = try {
@@ -115,7 +115,7 @@ object IntentParser {
                 if (resolved != null) {
                     parseMapUrl(resolved)?.let { return it.withLabel(textLabel(textWithoutUrls)) }
                     placeQuery(resolved)?.let(places::add)
-                    googleCid(resolved)?.let { cid = it }
+                    googleFeature(resolved)?.let { feature = it }
                 }
             }
         }
@@ -139,9 +139,9 @@ object IntentParser {
         if (places.isEmpty() && lookUpText && plainText.isNotEmpty() && plainText.lowercase() !in genericLabels) {
             places += plainText
         }
-        // Google's own search, matched by the link's Maps id, finds the exact place.
+        // Google finds the exact place by the link's Maps id.
         for (place in places.distinct()) {
-            val found = finder.find(place, cid) ?: continue
+            val found = finder.find(place, feature) ?: continue
             val located = location(found.lat, found.lng, placeLabel(place)) ?: continue
             return located.copy(approximate = found.approximate)
         }
@@ -281,11 +281,11 @@ object IntentParser {
         return location(lat + latSize / 2, lng + lngSize / 2, null)
     }
 
-    /** The Maps id of the place a Google link points at, if it has one. */
-    private fun googleCid(url: String): String? {
+    /** The Maps feature id of the place a Google link points at, if it has one. */
+    private fun googleFeature(url: String): String? {
         val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
         if (provider(uri) != Provider.GOOGLE) return null
-        return GooglePlaces.cid(Uri.decode(url))
+        return GooglePlaces.feature(Uri.decode(url))
     }
 
     private fun isMapsLink(url: String): Boolean {

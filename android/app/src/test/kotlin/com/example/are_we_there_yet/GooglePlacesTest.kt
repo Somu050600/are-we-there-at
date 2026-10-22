@@ -1,5 +1,7 @@
 package com.example.are_we_there_yet
 
+import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -61,9 +63,98 @@ class GooglePlacesTest {
     }
 
     @Test
+    fun `a feature id converts to the place id Google uses`() {
+        // Google's own example: Google Sydney, ?cid=10281119596374313554.
+        assertEquals("ChIJN1t_tDeuEmsRUsoyG83frY4", GooglePlaces.placeId("0x6b12ae37b47f5b37:0x8eaddfcd1b32ca52"))
+        assertEquals("ChIJm5vNASHzTDoRh4cL9yaGY_Q", GooglePlaces.placeId(GooglePlaces.feature(beyondBajji)!!))
+        assertEquals("0x3a4cf32101cd9b9b:0xf4638626f70b8787", GooglePlaces.feature(beyondBajji))
+        assertNull(GooglePlaces.placeId("Cafe"))
+    }
+
+    @Test
+    fun `place details and suggestions are read from Google's responses`() {
+        val details = GooglePlaces.location("""{"location":{"latitude":14.4372674,"longitude":79.9705642}}""")!!
+        assertEquals(14.4372674, details.lat, 0.0)
+        assertNull(GooglePlaces.location("{}"))
+
+        val suggestions = GooglePlaces.suggestions(
+            """{"suggestions":[
+              {"placePrediction":{"placeId":"ChIJa","text":{"text":"Beyond Bajji, Nellore"},
+                "structuredFormat":{"mainText":{"text":"Beyond Bajji"},"secondaryText":{"text":"Nellore, Andhra Pradesh"}}}},
+              {"queryPrediction":{"text":{"text":"bajji near me"}}},
+              {"placePrediction":{"placeId":"ChIJb","text":{"text":"Bajji Corner"}}}
+            ]}""",
+        )
+        assertEquals(
+            listOf(
+                PlaceSuggestion("ChIJa", "Beyond Bajji", "Nellore, Andhra Pradesh"),
+                PlaceSuggestion("ChIJb", "Bajji Corner", null),
+            ),
+            suggestions,
+        )
+        assertTrue(GooglePlaces.suggestions("not json").isEmpty())
+    }
+
+    private class FakeLookup(
+        private val details: GooglePlaces.Details,
+        private val search: String? = null,
+    ) : GooglePlaces.Lookup {
+        val asked = mutableListOf<String>()
+        override fun details(placeId: String, session: String?): GooglePlaces.Details {
+            asked += "details $placeId"
+            return details
+        }
+        override fun search(query: String): String? {
+            asked += "search"
+            return search
+        }
+    }
+
+    private val cache get() = PlaceCache(ApplicationProvider.getApplicationContext())
+    private val feature = "0x3a4cf32101cd9b9b:0xf4638626f70b8787"
+    private val bajji = IntentParser.ParsedLocation(14.4372674, 79.9705642)
+
+    @Test
+    fun `a shared place costs one details request, then none`() = runBlocking {
+        val lookup = FakeLookup(GooglePlaces.Details.Found(bajji))
+        val finder = GooglePlaces.finder(lookup, cache, searchFallback = true)
+
+        assertEquals(bajji, finder.find("Beyond Bajji", feature))
+        assertEquals(bajji, finder.find("Beyond Bajji", feature))
+        assertEquals(listOf("details ChIJm5vNASHzTDoRh4cL9yaGY_Q"), lookup.asked)
+    }
+
+    @Test
+    fun `a place Google doesn't know by id is searched for, unless that is off`() = runBlocking {
+        val response = response(place("17610066469860378503", 14.4372674, 79.9705642))
+        val lookup = FakeLookup(GooglePlaces.Details.Missing, response)
+        assertEquals(bajji, GooglePlaces.finder(lookup, cache, searchFallback = true).find("Beyond Bajji", feature))
+        assertEquals("search", lookup.asked.last())
+
+        val strict = FakeLookup(GooglePlaces.Details.Missing, response)
+        val failure = runCatching {
+            GooglePlaces.finder(strict, PlaceCache(ApplicationProvider.getApplicationContext()) { 0 }, false)
+                .find("Beyond Bajji", "0x1:0x2")
+        }.exceptionOrNull()
+        assertTrue(failure is PlaceNotFoundException)
+        assertFalse("search" in strict.asked)
+    }
+
+    @Test
+    fun `without a feature id only the search can find the place`() = runBlocking {
+        val lookup = FakeLookup(GooglePlaces.Details.Missing, response(place(null, 12.9, 77.6)))
+        val found = GooglePlaces.finder(lookup, cache, searchFallback = true).find("Blue Cafe, Bengaluru", null)!!
+        assertTrue(found.approximate)
+        assertEquals(listOf("search"), lookup.asked)
+        assertNull(GooglePlaces.finder(lookup, cache, searchFallback = false).find("Blue Cafe", null))
+    }
+
+    @Test
     fun `builds without a key never ask Google`() {
         // CI test builds have no PLACES_API_KEY; a local key would make this moot.
         assumeTrue(BuildConfig.PLACES_API_KEY.isEmpty())
-        assertEquals(PlaceFinder.None, GooglePlaces.finder(androidx.test.core.app.ApplicationProvider.getApplicationContext()))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        assertEquals(PlaceFinder.None, GooglePlaces.finder(context, PlaceCache(context), true))
+        assertNull(GooglePlaces.client(context))
     }
 }
