@@ -317,13 +317,33 @@ class _DestinationSheetState extends State<DestinationSheet> {
                         ],
                       ],
                     ),
-                    const SizedBox(height: 20),
-                    Text('Coordinates', style: theme.textTheme.bodySmall),
-                    Text(
-                      _draft.coordinates,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Coordinates',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                              Text(
+                                _draft.coordinates,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton.filledTonal(
+                          visualDensity: VisualDensity.compact,
+                          tooltip: 'Open in maps',
+                          onPressed: _busy ? null : _openInMaps,
+                          icon: const Icon(Icons.map_outlined),
+                        ),
+                      ],
                     ),
                     if (_shared?.approximate ?? false)
                       Padding(
@@ -468,6 +488,17 @@ class _DestinationSheetState extends State<DestinationSheet> {
         ),
       ),
     );
+  }
+
+  /// Shows the place in a maps app, to check it before saving.
+  Future<void> _openInMaps() async {
+    Haptics.tap();
+    try {
+      await NativeService.openInMaps(_current());
+    } catch (error) {
+      Haptics.error();
+      if (mounted) setState(() => _error = errorMessage(error));
+    }
   }
 
   Widget _cancelButton() => OutlinedButton(

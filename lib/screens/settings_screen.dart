@@ -220,6 +220,50 @@ class _SettingsScreenState extends State<SettingsScreen>
                 );
               },
             ),
+            header('Place search'),
+            Card(
+              child: SwitchListTile(
+                secondary: const Icon(Icons.travel_explore),
+                title: const Text('Search Google as you type'),
+                subtitle: Text(
+                  settings.placesAvailable
+                      ? 'Add place suggests shops and places by name, like '
+                            'Google Maps. Off: Android\'s free search, with '
+                            'Google one tap away.'
+                      : 'Needs a build with a Google Places key.',
+                  style: muted,
+                ),
+                value: settings.googleSearch && settings.placesAvailable,
+                onChanged: settings.placesAvailable
+                    ? (enabled) =>
+                          _attempt(() => _controller.setGoogleSearch(enabled))
+                    : null,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              clipBehavior: Clip.antiAlias,
+              child: ExpansionTile(
+                leading: const Icon(Icons.tune),
+                title: const Text('Advanced'),
+                shape: const Border(),
+                children: [
+                  SwitchListTile(
+                    title: const Text('Search for shared places by name'),
+                    subtitle: Text(
+                      'When Google doesn\'t recognise a shared place, search '
+                      'by its name and address. Uses Text Search (5,000 free '
+                      'a month). Off: the share says the place wasn\'t found.',
+                      style: muted,
+                    ),
+                    value: settings.placesSearchFallback,
+                    onChanged: (enabled) => _attempt(
+                      () => _controller.setPlacesSearchFallback(enabled),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

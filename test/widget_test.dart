@@ -80,6 +80,33 @@ void main() {
           final value = retries.removeAt(0);
           if (value is Exception) throw value;
           return value;
+        case 'searchPlaces':
+          final google = call.arguments['google'] as bool;
+          return google
+              ? [
+                  {
+                    'placeId': 'ChIJbajji',
+                    'name': 'Beyond Bajji',
+                    'address': 'Nellore, Andhra Pradesh',
+                  },
+                ]
+              : [
+                  {
+                    'name': 'MG Road',
+                    'address': 'MG Road, Bengaluru, Karnataka',
+                    'lat': 12.975,
+                    'lng': 77.606,
+                  },
+                ];
+        case 'placeLocation':
+          return {'lat': 14.4372674, 'lng': 79.9705642};
+        case 'parsePlace':
+          return {
+            'lat': 12.9716,
+            'lng': 77.5946,
+            'name': null,
+            'sharedLink': call.arguments['text'],
+          };
         case 'startTrip':
           if (startGate != null) await startGate!.future;
           if (startError != null) throw startError!;
@@ -102,6 +129,16 @@ void main() {
           return phoneMaker;
         case 'setMaxRadius':
           return {'maxRadiusMeters': call.arguments['meters']};
+        case 'setGoogleSearch':
+          return {
+            'googleSearch': call.arguments['enabled'],
+            'placesAvailable': true,
+          };
+        case 'setPlacesSearchFallback':
+          return {
+            'placesSearchFallback': call.arguments['enabled'],
+            'placesAvailable': true,
+          };
       }
       return null;
     });
@@ -373,6 +410,154 @@ void main() {
     await tap(tester, find.text('Retry'));
     expect(find.text('New Destination'), findsNothing);
     expect(find.text('Share the place again.'), findsOneWidget);
+    await finish(tester);
+  });
+
+  Future<void> addPlace(WidgetTester tester, String text) async {
+    await tap(tester, find.byTooltip('Add place'));
+    await tester.enterText(find.byType(TextField), text);
+    // Past the search delay.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+  }
+
+  appTest('add place searches Android first and saves the pick', (
+    tester,
+  ) async {
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      placesAvailable: true,
+    );
+    await mount(tester);
+    await addPlace(tester, 'MG Road');
+    final search = calls.lastWhere((c) => c.method == 'searchPlaces');
+    expect(search.arguments, {'query': 'MG Road', 'google': false});
+    expect(find.text('MG Road, Bengaluru, Karnataka'), findsOneWidget);
+    expect(find.text('Search Google for “MG Road”'), findsOneWidget);
+
+    await tap(tester, find.text('MG Road, Bengaluru, Karnataka'));
+    expect(find.text('New Destination'), findsOneWidget);
+    await tap(tester, find.widgetWithText(FilledButton, 'Save'));
+    final saved = (await db.getAllDestinations()).single;
+    expect(saved.name, 'MG Road');
+    expect(saved.latitude, 12.975);
+    await finish(tester);
+  });
+
+  appTest('search Google on tap uses one session up to the pick', (
+    tester,
+  ) async {
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      placesAvailable: true,
+    );
+    await mount(tester);
+    await addPlace(tester, 'Beyond Bajji');
+    await tap(tester, find.text('Search Google for “Beyond Bajji”'));
+    final search = calls.lastWhere((c) => c.method == 'searchPlaces');
+    expect(search.arguments['google'], isTrue);
+    final session = search.arguments['session'] as String;
+    expect(find.text('Powered by Google'), findsOneWidget);
+
+    await tap(tester, find.text('Nellore, Andhra Pradesh'));
+    final located = calls.lastWhere((c) => c.method == 'placeLocation');
+    expect(located.arguments, {'placeId': 'ChIJbajji', 'session': session});
+    expect(find.widgetWithText(TextField, 'Beyond Bajji'), findsOneWidget);
+    await finish(tester);
+  });
+
+  appTest('with Google search on, places are suggested as you type', (
+    tester,
+  ) async {
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      placesAvailable: true,
+      googleSearch: true,
+    );
+    await mount(tester);
+    await addPlace(tester, 'Bajji');
+    final searches = calls.where((c) => c.method == 'searchPlaces').toList();
+    expect(searches.single.arguments['google'], isTrue);
+    expect(find.text('Beyond Bajji'), findsOneWidget);
+    expect(find.textContaining('Search Google for'), findsNothing);
+    await finish(tester);
+  });
+
+  appTest('without a Places key there is no Google search', (tester) async {
+    await mount(tester);
+    await addPlace(tester, 'MG Road');
+    expect(find.text('MG Road, Bengaluru, Karnataka'), findsOneWidget);
+    expect(find.textContaining('Search Google for'), findsNothing);
+    await finish(tester);
+  });
+
+  appTest('a pasted link is read like a share, not searched', (tester) async {
+    await mount(tester);
+    await addPlace(tester, 'https://maps.app.goo.gl/CbSikGiBXYpUyJxw7');
+    expect(methods(), isNot(contains('searchPlaces')));
+    await tap(tester, find.text('Use this link'));
+    final parsed = calls.lastWhere((c) => c.method == 'parsePlace');
+    expect(parsed.arguments, {
+      'text': 'https://maps.app.goo.gl/CbSikGiBXYpUyJxw7',
+    });
+    expect(find.text('New Destination'), findsOneWidget);
+    await finish(tester);
+  });
+
+  appTest('open in maps from the sheet and from a saved row', (tester) async {
+    share('Majestic');
+    await mount(tester);
+    await tap(tester, find.byTooltip('Open in maps'));
+    final fromSheet = calls.lastWhere((c) => c.method == 'openInMaps');
+    expect(fromSheet.arguments, {
+      'lat': 12.9716,
+      'lng': 77.5946,
+      'name': 'Majestic',
+    });
+    await tap(tester, find.widgetWithText(FilledButton, 'Save'));
+
+    await tester.longPress(find.text('Majestic'));
+    await tester.pumpAndSettle();
+    calls.clear();
+    await tap(tester, find.text('Open in maps'));
+    expect(methods(), ['openInMaps']);
+    await finish(tester);
+  });
+
+  appTest('google search and the search fallback are set in settings', (
+    tester,
+  ) async {
+    controller.alarmSettings.value = const AlarmSettings(
+      enabled: true,
+      allowed: true,
+      placesAvailable: true,
+    );
+    await mount(tester);
+    await tap(tester, find.byTooltip('Settings'));
+    await tester.scrollUntilVisible(find.text('Advanced'), 200);
+    await tap(
+      tester,
+      find.widgetWithText(SwitchListTile, 'Search Google as you type'),
+    );
+    expect(calls.lastWhere((c) => c.method == 'setGoogleSearch').arguments, {
+      'enabled': true,
+    });
+    await tap(tester, find.text('Advanced'));
+    await tester.scrollUntilVisible(
+      find.text('Search for shared places by name'),
+      200,
+    );
+    await tap(
+      tester,
+      find.widgetWithText(SwitchListTile, 'Search for shared places by name'),
+    );
+    expect(
+      calls.lastWhere((c) => c.method == 'setPlacesSearchFallback').arguments,
+      {'enabled': false},
+    );
     await finish(tester);
   });
 
@@ -669,6 +854,7 @@ void main() {
     });
     await tester.longPress(find.text('Home').last);
     await tester.pumpAndSettle();
+    await tap(tester, find.text('Edit'));
     await tap(tester, find.byTooltip('Delete destination'));
     expect(methods().last, 'stopTrip');
     expect(await db.getAllDestinations(), isEmpty);

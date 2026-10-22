@@ -80,6 +80,9 @@ class AlarmSettings {
     this.batteryUnrestricted = true,
     this.vibrateOnly = false,
     this.maxRadiusMeters = defaultMaxRadius,
+    this.googleSearch = false,
+    this.placesSearchFallback = true,
+    this.placesAvailable = false,
   });
 
   static const defaultMaxRadius = 10000.0;
@@ -105,6 +108,16 @@ class AlarmSettings {
   /// The largest radius the destination sheet offers.
   final double maxRadiusMeters;
 
+  /// Add place suggests Google places as you type, instead of searching
+  /// Android's free geocoder.
+  final bool googleSearch;
+
+  /// A shared place Google doesn't know by its id is searched for by name.
+  final bool placesSearchFallback;
+
+  /// This build has a Google Places key.
+  final bool placesAvailable;
+
   factory AlarmSettings.fromMap(Object? raw) {
     if (raw is! Map) return defaults;
     return AlarmSettings(
@@ -117,6 +130,9 @@ class AlarmSettings {
           meters.toDouble(),
         _ => defaultMaxRadius,
       },
+      googleSearch: raw['googleSearch'] as bool? ?? false,
+      placesSearchFallback: raw['placesSearchFallback'] as bool? ?? true,
+      placesAvailable: raw['placesAvailable'] as bool? ?? false,
     );
   }
 }

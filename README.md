@@ -89,10 +89,18 @@ same key. Local `flutter build apk --release` uses the debug key unless
 ### Exact shared places
 
 The Google Maps app shares a named place as a link with its name, address and
-Maps id but no coordinates. With a Google Places API key, the app runs one
-Places Text Search for the name and address and uses the result with the same
-Maps id: the exact place, not a guess. Links that carry coordinates (dropped
-pins) never call it. Text Search Pro has 5,000 free requests a month.
+Maps id but no coordinates. With a Google Places API key, the app turns the
+link's Maps id into the place id and asks Place Details for its location only:
+the exact place, not a guess. That is the Essentials tier (10,000 free requests
+a month), and each place is remembered, so sharing it again costs nothing. Only
+if Google doesn't know that id does it run a Text Search by name and address
+(Pro, 5,000 free a month); that fallback can be turned off under Settings →
+Advanced. Links that carry coordinates (dropped pins) never call Google.
+
+The Add place screen (the + button) searches Android's free geocoder, with
+**Search Google** for shops and places by name. Google suggestions use
+Autocomplete sessions: the suggestions are free when a place is picked, and the
+pick is one Place Details Essentials request.
 
 1. In the [Google Cloud console](https://console.cloud.google.com), link a
    billing account to a project and enable **Places API (New)**.
@@ -101,8 +109,8 @@ pins) never call it. Text Search Pro has 5,000 free requests a month.
      `E9:2F:5B:18:78:F8:B5:C2:CD:F0:D4:91:7D:9B:05:BA:BA:30:31:70` (the release
      key; add your debug key's SHA-1 to test debug builds).
    - **API restrictions**: Places API (New) only.
-3. Cap the Text Search requests per day under the API's **Quotas** (for example
-   200) and add a budget alert.
+3. Cap requests per day under the API's **Quotas** (for example 200 each for
+   Place Details, Autocomplete and Text Search) and add a budget alert.
 4. Save the key as the repository secret `PLACES_API_KEY`. The Release workflow
    builds it into the APK. For local builds, add `PLACES_API_KEY=…` to
    `android/local.properties` (gitignored).

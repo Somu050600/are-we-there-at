@@ -23,14 +23,21 @@ Checked against a real share (Beyond Bajji, Nellore):
 
 - `IntentParser` reads the CID from any Google link it sees (the shared one or
   the expanded one), from `!1s0x…:0x…` or `ftid=0x…:0x…`.
-- `PlaceFinder` runs before the geocoder. `GooglePlaces.finder` sends one
-  Places Text Search (New) request: `textQuery` = the name and address from the
-  link, `pageSize` 20, field mask `places.location,places.googleMapsUri`
-  (Text Search Pro), with `X-Android-Package` and `X-Android-Cert` so an
-  Android-restricted key works.
-- The result whose `googleMapsUri` has the same CID is used and not marked
-  approximate. Without a match, the top result is used, marked approximate.
-  With no response (no key, offline, error) the geocoder runs as before.
+- `PlaceFinder` runs before the geocoder and gets the link's feature id.
+- **Cache first.** `PlaceCache` keeps found places by CID (the 500 most
+  recent), so a place shared again costs no request.
+- **Place Details by converted id.** A `ChIJ…` place id is URL-safe base64 of
+  a protobuf with the feature id's halves as fixed64 fields 1 and 2 (checked
+  against Google's own example: Google Sydney's id and `?cid=`). The finder
+  builds the id and sends `GET /v1/places/{id}` with field mask `location`
+  (Place Details Essentials), `X-Android-Package` and `X-Android-Cert`.
+- **Text Search fallback** when Google answers 400/404 for that id (or another
+  error): one Text Search (New) request, `textQuery` = the name and address,
+  field mask `places.location,places.googleMapsUri` (Pro). The result whose
+  `googleMapsUri` has the same CID is used; without a match the top result,
+  marked approximate. Settings → Advanced turns this off; then an unknown id
+  fails the share with "Google Maps doesn't know this place any more".
+- With no response (no key, offline, error) the geocoder runs as before.
 - The key comes from `PLACES_API_KEY` (CI secret, or `android/local.properties`)
   into `BuildConfig`. Release builds warn when it is missing.
 
@@ -53,9 +60,10 @@ connection to the short link times out every time.
 
 ## Cost
 
-One request per share of a named place; none for links with coordinates.
-Text Search Pro: 5,000 free requests a month, then about $32 per 1,000. A daily
-quota cap on the key keeps it free.
+At most one Place Details Essentials request per new place shared (10,000
+free a month), none for a place shared before or for links with coordinates.
+Text Search Pro (5,000 free a month, then about $32 per 1,000) only when Google
+doesn't know the converted id. Daily quota caps on the key keep it free.
 
 ## Testing
 

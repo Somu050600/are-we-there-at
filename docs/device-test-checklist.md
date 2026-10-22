@@ -64,3 +64,12 @@ References:
 - https://developer.android.com/develop/sensors-and-location/location/request-updates
 - https://developer.android.com/develop/background-work/services/fgs/service-types#location
 - https://developer.android.com/develop/ui/views/notifications/notification-permission
+- Add place (+): search "MG Road" and pick a result; tap Search Google for a
+  shop name and pick it; turn on Search Google as you type in Settings and
+  check suggestions appear while typing, nearby ones first; paste a Maps link
+  and tap Use this link.
+- Open in maps from the sheet, the direction screen and a saved row's long
+  press menu: the chooser lists the installed maps apps and the place opens.
+- Share the same named place twice: the second time is instant (cached). In
+  Google Cloud, Place Details shows the requests and Text Search stays near
+  zero.

@@ -133,7 +133,7 @@ class GooglePlacesTest {
 
         val strict = FakeLookup(GooglePlaces.Details.Missing, response)
         val failure = runCatching {
-            GooglePlaces.finder(strict, PlaceCache(ApplicationProvider.getApplicationContext()) { 0 }, false)
+            GooglePlaces.finder(strict, PlaceCache(ApplicationProvider.getApplicationContext()) { 0L }, false)
                 .find("Beyond Bajji", "0x1:0x2")
         }.exceptionOrNull()
         assertTrue(failure is PlaceNotFoundException)
