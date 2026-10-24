@@ -2,6 +2,7 @@ package com.example.are_we_there_yet
 
 class InvalidArgumentsException(message: String) : IllegalArgumentException(message)
 data class Place(val lat: Double, val lng: Double, val name: String)
+data class PlaceSearch(val query: String, val google: Boolean, val session: String?)
 
 object NativeArguments {
     const val MIN_RADIUS = 50.0
@@ -48,4 +49,39 @@ object NativeArguments {
 
     fun enabled(arguments: Any?): Boolean = (arguments as? Map<*, *>)?.get("enabled") as? Boolean
         ?: throw InvalidArgumentsException("enabled must be true or false")
+
+    /** Text typed or pasted into Add place. */
+    fun text(arguments: Any?): String = ((arguments as? Map<*, *>)?.get("text") as? String)?.trim()
+        ?.takeIf { it.isNotEmpty() && it.length <= MAX_TEXT }
+        ?: throw InvalidArgumentsException("Enter a link, coordinates or a place")
+
+    fun placeSearch(arguments: Any?): PlaceSearch {
+        val values = arguments as? Map<*, *> ?: throw InvalidArgumentsException("Expected a search")
+        val query = (values["query"] as? String)?.trim()?.takeIf { it.length in 2..MAX_QUERY }
+            ?: throw InvalidArgumentsException("Search for 2 to $MAX_QUERY characters")
+        val google = values["google"] as? Boolean ?: throw InvalidArgumentsException("google must be true or false")
+        val session = session(values["session"])
+        if (google && session == null) throw InvalidArgumentsException("A Google search needs a session")
+        return PlaceSearch(query, google, session)
+    }
+
+    /** A place id from Autocomplete and the session it came from. */
+    fun placeId(arguments: Any?): Pair<String, String?> {
+        val values = arguments as? Map<*, *> ?: throw InvalidArgumentsException("Expected a place id")
+        val id = (values["placeId"] as? String)?.takeIf { placeIdPattern.matches(it) }
+            ?: throw InvalidArgumentsException("A valid place id is required")
+        return id to session(values["session"])
+    }
+
+    private fun session(value: Any?): String? = when (value) {
+        null -> null
+        is String -> value.takeIf { sessionPattern.matches(it) }
+            ?: throw InvalidArgumentsException("A valid session token is required")
+        else -> throw InvalidArgumentsException("A valid session token is required")
+    }
+
+    private const val MAX_TEXT = 2_000
+    private const val MAX_QUERY = 200
+    private val placeIdPattern = Regex("[A-Za-z0-9_-]{1,512}")
+    private val sessionPattern = Regex("[A-Za-z0-9-]{1,64}")
 }

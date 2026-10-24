@@ -20,6 +20,41 @@ class SharedLocation {
   });
 }
 
+/// A search result in Add place. Android's geocoder gives coordinates at
+/// once; a Google suggestion has a [placeId] and is located when picked.
+class PlaceSuggestion {
+  const PlaceSuggestion({
+    required this.name,
+    this.address,
+    this.lat,
+    this.lng,
+    this.placeId,
+  });
+
+  final String name;
+  final String? address;
+  final double? lat;
+  final double? lng;
+  final String? placeId;
+
+  bool get fromGoogle => placeId != null;
+
+  static PlaceSuggestion? fromMap(Object? raw) {
+    if (raw is! Map || raw['name'] is! String) return null;
+    final lat = raw['lat'];
+    final lng = raw['lng'];
+    final placeId = raw['placeId'];
+    if (placeId is! String && (lat is! num || lng is! num)) return null;
+    return PlaceSuggestion(
+      name: raw['name'] as String,
+      address: raw['address'] as String?,
+      lat: (lat as num?)?.toDouble(),
+      lng: (lng as num?)?.toDouble(),
+      placeId: placeId as String?,
+    );
+  }
+}
+
 class NativeService {
   /// The largest radius Android accepts; a setting limits the sheet further.
   static const maxRadius = 100000.0;
@@ -154,6 +189,60 @@ class NativeService {
         }),
       );
 
+  static Future<AlarmSettings> setGoogleSearch(bool enabled) async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('setGoogleSearch', {
+          'enabled': enabled,
+        }),
+      );
+
+  static Future<AlarmSettings> setPlacesSearchFallback(bool enabled) async =>
+      AlarmSettings.fromMap(
+        await _channel.invokeMethod<Object?>('setPlacesSearchFallback', {
+          'enabled': enabled,
+        }),
+      );
+
+  /// Reads a pasted link or coordinates like a share.
+  static Future<SharedLocation?> parsePlace(String text) async =>
+      _sharedLocation(
+        await _channel.invokeMethod<Object?>('parsePlace', {'text': text}),
+      );
+
+  /// Places for [query]: Google suggestions when [google] (part of
+  /// [session]), else Android's geocoder.
+  static Future<List<PlaceSuggestion>> searchPlaces(
+    String query, {
+    required bool google,
+    String? session,
+  }) async {
+    final result = await _channel.invokeMethod<Object?>('searchPlaces', {
+      'query': query,
+      'google': google,
+      'session': ?session,
+    });
+    if (result is! List) return const [];
+    return result.map(PlaceSuggestion.fromMap).nonNulls.toList();
+  }
+
+  /// Where a Google suggestion is; this ends its search [session].
+  static Future<SharedLocation> placeLocation(
+    PlaceSuggestion suggestion, {
+    String? session,
+  }) async {
+    final result = await _channel.invokeMethod<Object?>('placeLocation', {
+      'placeId': suggestion.placeId,
+      'session': ?session,
+    });
+    final location = _sharedLocation(
+      result is Map ? {...result, 'name': suggestion.name} : result,
+    );
+    if (location == null) {
+      throw const FormatException('Could not find where this place is.');
+    }
+    return location;
+  }
+
   static Future<AlarmSettings> setVibrateOnly(bool enabled) async =>
       AlarmSettings.fromMap(
         await _channel.invokeMethod<Object?>('setVibrateOnly', {
@@ -178,6 +267,7 @@ class NativeService {
     (value) => (value as num).toDouble(),
   );
 
+  /// Lets the user pick a maps app showing [destination].
   static Future<void> openInMaps(Destination destination) =>
       _channel.invokeMethod('openInMaps', {
         'lat': destination.latitude,

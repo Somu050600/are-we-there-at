@@ -88,6 +88,14 @@ class TripController {
     alarmSettings.value = await NativeService.setMaxRadius(meters);
   });
 
+  Future<void> setGoogleSearch(bool enabled) => _run(() async {
+    alarmSettings.value = await NativeService.setGoogleSearch(enabled);
+  });
+
+  Future<void> setPlacesSearchFallback(bool enabled) => _run(() async {
+    alarmSettings.value = await NativeService.setPlacesSearchFallback(enabled);
+  });
+
   Future<void> setVibrateOnly(bool enabled) => _run(() async {
     alarmSettings.value = await NativeService.setVibrateOnly(enabled);
   });

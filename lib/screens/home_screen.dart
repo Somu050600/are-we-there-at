@@ -9,6 +9,7 @@ import '../util/relative_time.dart';
 import '../widgets/destination_tile.dart';
 import '../util/haptics.dart';
 import '../widgets/last_trip_card.dart';
+import 'add_place_screen.dart';
 import 'destination_sheet.dart';
 import 'direction_screen.dart';
 import 'settings_screen.dart';
@@ -156,6 +157,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
+  Future<void> _addPlace() async {
+    Haptics.tap();
+    final place = await Navigator.of(context).push<SharedLocation>(
+      MaterialPageRoute(
+        builder: (_) => AddPlaceScreen(controller: _controller),
+      ),
+    );
+    if (place == null || !mounted) return;
+    await showDestinationSheet(context, controller: _controller, shared: place);
+  }
+
+  /// Long press on a saved destination.
+  void _showMenu(Destination destination) {
+    Haptics.tap();
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.map_outlined),
+              title: const Text('Open in maps'),
+              onTap: () {
+                Navigator.of(sheet).pop();
+                _attempt(() => NativeService.openInMaps(destination));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit'),
+              onTap: () {
+                Navigator.of(sheet).pop();
+                _edit(destination);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openDirection(Destination? destination) {
     Haptics.tap();
     Navigator.of(context).push(
@@ -173,6 +217,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        tooltip: 'Add place',
+        onPressed: _addPlace,
+        child: const Icon(Icons.add),
+      ),
       body: SafeArea(
         child: StreamBuilder<List<Destination>>(
           stream: _destinations,
@@ -190,7 +239,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             // Only the top card follows every fix; the list is built once per
             // change to the saved destinations.
             return ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              // Room at the end so the add button never covers a row.
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
               children: [
                 Align(
                   alignment: Alignment.centerRight,
@@ -279,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             onTap: destination.id == active.id
                                 ? () => _openDirection(destination)
                                 : () => _edit(destination),
-                            onLongPress: () => _edit(destination),
+                            onLongPress: () => _showMenu(destination),
                             onStart: () => _attempt(
                               () => _controller.start(destination),
                               trip: true,

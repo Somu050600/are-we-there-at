@@ -75,4 +75,30 @@ class NativeArgumentsTest {
             NativeArguments.place(mapOf("lat" to 91, "lng" to 77.5, "name" to "x"))
         }
     }
+
+    @Test
+    fun `searches need a query, and Google searches a session`() {
+        assertEquals(
+            PlaceSearch("Beyond Bajji", google = true, session = "a-1"),
+            NativeArguments.placeSearch(mapOf("query" to " Beyond Bajji ", "google" to true, "session" to "a-1")),
+        )
+        assertNull(NativeArguments.placeSearch(mapOf("query" to "MG Road", "google" to false)).session)
+        assertThrows(InvalidArgumentsException::class.java) {
+            NativeArguments.placeSearch(mapOf("query" to "x", "google" to false))
+        }
+        assertThrows(InvalidArgumentsException::class.java) {
+            NativeArguments.placeSearch(mapOf("query" to "MG Road", "google" to true))
+        }
+        assertThrows(InvalidArgumentsException::class.java) {
+            NativeArguments.placeSearch(mapOf("query" to "MG Road", "google" to true, "session" to "a b"))
+        }
+    }
+
+    @Test
+    fun `place ids and pasted text are checked`() {
+        assertEquals("ChIJ_a-1" to null, NativeArguments.placeId(mapOf("placeId" to "ChIJ_a-1")))
+        assertThrows(InvalidArgumentsException::class.java) { NativeArguments.placeId(mapOf("placeId" to "../x")) }
+        assertEquals("geo:1,2", NativeArguments.text(mapOf("text" to " geo:1,2 ")))
+        assertThrows(InvalidArgumentsException::class.java) { NativeArguments.text(mapOf("text" to "  ")) }
+    }
 }

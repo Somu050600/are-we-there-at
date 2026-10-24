@@ -159,7 +159,7 @@ class IntentParserTest {
         assertEquals("Beyond Bajji", parsed?.name)
         assertFalse(parsed!!.approximate)
         assertFalse(geocoded)
-        assertEquals("17610066469860378503", asked.single().second)
+        assertEquals("0x3a4cf32101cd9b9b:0xf4638626f70b8787", asked.single().second)
         assertTrue(asked.single().first.startsWith("Beyond Bajji, Elite wine walk in Store"))
     }
 

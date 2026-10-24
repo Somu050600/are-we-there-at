@@ -111,6 +111,16 @@ class TripStore(context: Context) {
         @Synchronized get() = preferences.getBoolean(KEY_VIBRATE_ONLY, false)
         @Synchronized set(value) = commit { putBoolean(KEY_VIBRATE_ONLY, value) }
 
+    /** Add place searches Google as you type instead of Android's free geocoder. */
+    var googleSearch: Boolean
+        @Synchronized get() = preferences.getBoolean(KEY_GOOGLE_SEARCH, false)
+        @Synchronized set(value) = commit { putBoolean(KEY_GOOGLE_SEARCH, value) }
+
+    /** A shared place Google doesn't know by its id is searched for by name (Text Search). */
+    var placesSearchFallback: Boolean
+        @Synchronized get() = preferences.getBoolean(KEY_PLACES_FALLBACK, true)
+        @Synchronized set(value) = commit { putBoolean(KEY_PLACES_FALLBACK, value) }
+
     var legacyCleanupDone: Boolean
         @Synchronized get() = preferences.getBoolean(KEY_LEGACY_CLEANUP, false)
         @Synchronized set(value) = commit { putBoolean(KEY_LEGACY_CLEANUP, value) }
@@ -128,6 +138,8 @@ class TripStore(context: Context) {
         private const val KEY_FULL_SCREEN = "full_screen_alarm"
         private const val KEY_LEGACY_CLEANUP = "legacy_geofences_removed"
         private const val KEY_VIBRATE_ONLY = "vibrate_only"
+        private const val KEY_GOOGLE_SEARCH = "google_search"
+        private const val KEY_PLACES_FALLBACK = "places_search_fallback"
         private const val KEY_MAX_RADIUS = "max_radius_meters"
         private const val DEFAULT_MAX_RADIUS = 10_000.0
     }
